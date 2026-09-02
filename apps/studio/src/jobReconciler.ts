@@ -35,7 +35,7 @@ export function reconcilePersistentJobs(
       status: localStatus(remote),
       progress: remote.progress,
       prompt: remote.trigger.label,
-      provider: "volcengine-ark",
+      provider: remote.provider ?? existingJob?.provider ?? "unknown",
       model: remote.model,
       createdAt: remote.createdAt,
       outputArtifactIds: outputIds,

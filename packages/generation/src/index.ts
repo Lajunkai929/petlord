@@ -114,6 +114,8 @@ export type PersistentJobStatus = "queued" | "submitting" | "running" | "succeed
 export interface PersistentGenerationJob {
   id: string;
   kind: "state-image" | "transition-video";
+  providerId?: string;
+  provider?: string;
   status: PersistentJobStatus;
   progress: number;
   model: string;
@@ -140,6 +142,53 @@ export interface PersistentJobCost {
   estimatedMaxCny: number;
   actualCny?: number;
   basis: string;
+}
+
+export type GenerationProviderCapability = "image" | "video";
+export type GenerationProviderType = "volcengine-ark";
+
+export interface GenerationProviderModel {
+  id: string;
+  label: string;
+  description: string;
+}
+
+export interface GenerationProviderCatalogEntry {
+  type: GenerationProviderType;
+  label: string;
+  description: string;
+  defaultBaseUrl: string;
+  capabilities: GenerationProviderCapability[];
+  models: Record<GenerationProviderCapability, GenerationProviderModel[]>;
+}
+
+export interface GenerationProviderConfiguration {
+  id: string;
+  type: GenerationProviderType;
+  capability: GenerationProviderCapability;
+  name: string;
+  baseUrl: string;
+  enabled: boolean;
+  credentialHint: string;
+  models: GenerationProviderModel[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GenerationProvidersSnapshot {
+  serviceAvailable: true;
+  providers: GenerationProviderConfiguration[];
+  catalog: GenerationProviderCatalogEntry[];
+  defaults: Partial<Record<GenerationProviderCapability, string>>;
+}
+
+export interface SaveGenerationProviderInput {
+  type: GenerationProviderType;
+  capability: GenerationProviderCapability;
+  name: string;
+  apiKey?: string;
+  baseUrl: string;
+  enabled?: boolean;
 }
 
 const imagePriceCny: Record<string, number> = {
@@ -219,27 +268,19 @@ export type PersistentTransitionRequest = TransitionGenerationRequest & {
   trigger: GenerationTrigger;
 };
 
-export interface GenerationProvider {
+export interface ImageGenerationProvider {
   readonly id: string;
+  readonly capability: "image";
   generateStateDraft(request: StateDraftRequest, onProgress?: (progress: number) => void): Promise<GeneratedMedia>;
+}
+
+export interface VideoGenerationProvider {
+  readonly id: string;
+  readonly capability: "video";
   generateTransition(
     request: TransitionGenerationRequest,
     onProgress?: (progress: number) => void,
   ): Promise<TransitionGenerationResult>;
-}
-
-interface ArkVideoTask {
-  id: string;
-  status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "expired";
-  model?: string;
-  duration?: string | number;
-  content?: {
-    video_url?: string;
-    last_frame_url?: string;
-    last_frame?: { url?: string } | string;
-    image_url?: string;
-  };
-  error?: { message?: string; code?: string };
 }
 
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -270,6 +311,32 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   return parseJsonResponse<T>(response, "生成请求");
 }
 
+export function listGenerationProviders() {
+  return requestJson<GenerationProvidersSnapshot>("/api/providers");
+}
+
+export function createGenerationProvider(input: SaveGenerationProviderInput) {
+  return requestJson<GenerationProviderConfiguration>("/api/providers", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateGenerationProvider(id: string, input: Partial<SaveGenerationProviderInput>) {
+  return requestJson<GenerationProviderConfiguration>(`/api/providers/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteGenerationProvider(id: string) {
+  return requestJson<{ deleted: true }>(`/api/providers/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export function testGenerationProvider(id: string) {
+  return requestJson<{ ok: true; message: string }>(`/api/providers/${encodeURIComponent(id)}/test`, { method: "POST" });
+}
+
 async function toArkImageUri(uri: string): Promise<string> {
   if (/^(https?:|data:|asset:)/.test(uri)) return uri;
   const response = await fetch(uri);
@@ -291,51 +358,6 @@ async function toArkImageUri(uri: string): Promise<string> {
   });
 }
 
-function readTailFrame(task: ArkVideoTask): string | undefined {
-  const lastFrame = task.content?.last_frame;
-  return task.content?.last_frame_url ??
-    (typeof lastFrame === "string" ? lastFrame : lastFrame?.url) ??
-    task.content?.image_url;
-}
-
-async function createVideoTask(body: Record<string, unknown>): Promise<string> {
-  const response = await requestJson<{ id: string }>("/api/ark/video/tasks", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-  return response.id;
-}
-
-async function pollVideoTask(taskId: string, onProgress?: (progress: number) => void): Promise<ArkVideoTask> {
-  const startedAt = Date.now();
-  for (;;) {
-    const task = await requestJson<ArkVideoTask>(`/api/ark/video/tasks/${encodeURIComponent(taskId)}`);
-    if (task.status === "succeeded") {
-      onProgress?.(100);
-      return task;
-    }
-    if (["failed", "cancelled", "expired"].includes(task.status)) {
-      throw new Error(task.error?.message ?? `视频生成任务状态：${task.status}`);
-    }
-    const elapsed = Date.now() - startedAt;
-    const estimated = task.status === "queued" ? 12 : Math.min(92, 30 + Math.round(elapsed / 4000));
-    onProgress?.(estimated);
-    await wait(2000);
-  }
-}
-
-async function createReferenceContent(uris: string[]) {
-  const materialized = await Promise.all(uris.slice(0, 4).map(toArkImageUri));
-  return materialized.map((url) => ({
-    type: "image_url",
-    image_url: { url },
-    role: "reference_image",
-  }));
-}
-
-function usesUnifiedReferenceMode(model: string) {
-  return model.startsWith("doubao-seedance-2-");
-}
 
 export function squareVideoPixels(resolution: GenerationSettings["videoResolution"]) {
   return resolution === "480p" ? 480 : resolution === "720p" ? 720 : 1080;
@@ -374,30 +396,6 @@ export function assembleTransitionPrompt(request: Pick<TransitionGenerationReque
     "【输出规格】",
     `生成无声视频，不要对白、音乐或音效。输出固定为 ${request.settings.ratio} 正方形、${request.settings.videoResolution}；第一帧必须与图片1逐像素构图衔接。`,
   ].filter(Boolean).join("\n");
-}
-
-async function createTransitionContent(request: TransitionGenerationRequest, firstFrame: string, lastFrame: string) {
-  const assembledPrompt = assembleTransitionPrompt(request);
-  if (usesUnifiedReferenceMode(request.settings.videoModel)) {
-    const identities = await Promise.all(request.identityReferenceUris.slice(0, 7).map(toArkImageUri));
-    return [
-      {
-        type: "text",
-        text: assembledPrompt,
-      },
-      ...[firstFrame, lastFrame, ...identities].map((url) => ({
-        type: "image_url",
-        image_url: { url },
-        role: "reference_image",
-      })),
-    ];
-  }
-  return [
-    { type: "text", text: assembledPrompt },
-    { type: "image_url", image_url: { url: firstFrame }, role: "first_frame" },
-    { type: "image_url", image_url: { url: lastFrame }, role: "last_frame" },
-    ...(await createReferenceContent(request.identityReferenceUris)),
-  ];
 }
 
 async function submitPersistentJob(body: Record<string, unknown>) {
@@ -458,22 +456,18 @@ export async function submitStateDraftJob(request: PersistentStateDraftRequest) 
   return submitPersistentJob({
     id: request.jobId,
     kind: "state-image",
+    providerId: request.settings.imageProviderId,
+    capability: "image",
     model: request.settings.imageModel,
     trigger: request.trigger,
-    arkType: "image",
     assembledPrompt: prompt,
     cost: toPersistentJobCost(estimateImageGenerationCost(request.settings.imageModel, request.settings.imageCandidateCount)),
     request: {
       model: request.settings.imageModel,
       prompt,
-      image: images,
-      size: request.settings.imageResolution,
-      sequential_image_generation: request.settings.imageCandidateCount > 1 ? "auto" : "disabled",
-      ...(request.settings.imageCandidateCount > 1
-        ? { sequential_image_generation_options: { max_images: request.settings.imageCandidateCount } }
-        : {}),
-      response_format: "url",
-      watermark: false,
+      referenceImages: images,
+      resolution: request.settings.imageResolution,
+      candidateCount: request.settings.imageCandidateCount,
     },
   });
 }
@@ -483,29 +477,30 @@ export async function submitTransitionJob(request: PersistentTransitionRequest) 
     toArkImageUri(request.fromStateImageUri),
     toArkImageUri(request.targetDraftImageUri),
   ]);
-  const arkRequest: Record<string, unknown> = {
+  const providerRequest: Record<string, unknown> = {
     model: request.settings.videoModel,
-    content: await createTransitionContent(request, firstFrame, lastFrame),
-    return_last_frame: true,
-    generate_audio: false,
+    prompt: assembleTransitionPrompt(request),
+    firstFrame,
+    lastFrame,
+    identityReferences: await Promise.all(request.identityReferenceUris.slice(0, 7).map(toArkImageUri)),
     resolution: request.settings.videoResolution,
     ratio: request.settings.ratio,
-    watermark: false,
   };
-  if (request.durationMode === "fixed" && request.durationSeconds) arkRequest.duration = request.durationSeconds;
+  if (request.durationMode === "fixed" && request.durationSeconds) providerRequest.durationSeconds = request.durationSeconds;
   return submitPersistentJob({
     id: request.jobId,
     kind: "transition-video",
+    providerId: request.settings.videoProviderId,
+    capability: "video",
     model: request.settings.videoModel,
     trigger: request.trigger,
-    arkType: "video",
     cost: toPersistentJobCost(estimateVideoGenerationCost({
       model: request.settings.videoModel,
       resolution: request.settings.videoResolution,
       durationMode: request.durationMode,
       durationSeconds: request.durationSeconds,
     })),
-    request: arkRequest,
+    request: providerRequest,
     assembledPrompt: assembleTransitionPrompt(request),
     chromaKeyColor: request.chromaBackgroundColor.toUpperCase(),
     postprocess: {
@@ -517,93 +512,11 @@ export async function submitTransitionJob(request: PersistentTransitionRequest) 
   });
 }
 
-export function createArkGenerationProvider(): GenerationProvider {
-  return {
-    id: "volcengine-ark",
-    async generateStateDraft(request, onProgress) {
-      const prompt = assembleStateDraftPrompt(request);
-      const images = await Promise.all(request.identityReferenceUris.slice(0, 10).map(toArkImageUri));
-
-      onProgress?.(18);
-      const response = await requestJson<{
-        model?: string;
-        data: Array<{ url?: string; b64_json?: string }>;
-      }>("/api/ark/images/generations", {
-        method: "POST",
-        body: JSON.stringify({
-          model: request.settings.imageModel,
-          prompt,
-          image: images,
-          size: request.settings.imageResolution,
-          sequential_image_generation: "disabled",
-          response_format: "url",
-          watermark: false,
-        }),
-      });
-      const result = response.data[0];
-      const uri = result?.url ?? (result?.b64_json ? `data:image/png;base64,${result.b64_json}` : undefined);
-      if (!uri) throw new Error("图片模型没有返回可用图片");
-      onProgress?.(100);
-      return {
-        uri,
-        mimeType: result?.url?.toLowerCase().includes(".png") ? "image/png" : "image/jpeg",
-        provider: this.id,
-        model: response.model ?? request.settings.imageModel,
-      };
-    },
-    async generateTransition(request, onProgress) {
-      const [firstFrame, lastFrame] = await Promise.all([
-        toArkImageUri(request.fromStateImageUri),
-        toArkImageUri(request.targetDraftImageUri),
-      ]);
-      const body: Record<string, unknown> = {
-        model: request.settings.videoModel,
-        content: await createTransitionContent(request, firstFrame, lastFrame),
-        return_last_frame: true,
-        generate_audio: false,
-        resolution: request.settings.videoResolution,
-        ratio: request.settings.ratio,
-        watermark: false,
-      };
-      if (request.durationMode === "fixed" && request.durationSeconds) {
-        body.duration = request.durationSeconds;
-      }
-      const taskId = await createVideoTask(body);
-      const task = await pollVideoTask(taskId, onProgress);
-      const videoUri = task.content?.video_url;
-      const tailFrame = readTailFrame(task);
-      if (!videoUri || !tailFrame) throw new Error("视频任务缺少视频或尾帧输出");
-      const durationSeconds = Number(task.duration);
-      return {
-        video: {
-          uri: videoUri,
-          mimeType: "video/mp4",
-          provider: this.id,
-          model: task.model ?? request.settings.videoModel,
-          pixelWidth: squareVideoPixels(request.settings.videoResolution),
-          pixelHeight: squareVideoPixels(request.settings.videoResolution),
-          silent: true,
-          hasAlpha: false,
-        },
-        extractedTail: {
-          uri: tailFrame,
-          mimeType: "image/png",
-          provider: this.id,
-          model: task.model ?? request.settings.videoModel,
-          pixelWidth: squareVideoPixels(request.settings.videoResolution),
-          pixelHeight: squareVideoPixels(request.settings.videoResolution),
-          hasAlpha: false,
-        },
-        durationMs: Number.isFinite(durationSeconds) ? durationSeconds * 1000 : undefined,
-      };
-    },
-  };
-}
-
-export function createSandboxGenerationProvider(options: { stepDelayMs?: number } = {}): GenerationProvider {
+export function createSandboxImageGenerationProvider(options: { stepDelayMs?: number } = {}): ImageGenerationProvider {
   const stepDelayMs = options.stepDelayMs ?? 360;
   return {
-    id: "sandbox",
+    id: "sandbox-image",
+    capability: "image",
     async generateStateDraft(request) {
       await wait(stepDelayMs * 2);
       return {
@@ -613,6 +526,14 @@ export function createSandboxGenerationProvider(options: { stepDelayMs?: number 
         model: request.settings.imageModel,
       };
     },
+  };
+}
+
+export function createSandboxVideoGenerationProvider(options: { stepDelayMs?: number } = {}): VideoGenerationProvider {
+  const stepDelayMs = options.stepDelayMs ?? 360;
+  return {
+    id: "sandbox-video",
+    capability: "video",
     async generateTransition(request, onProgress) {
       for (const progress of [24, 48, 73, 91]) {
         await wait(stepDelayMs);
@@ -644,5 +565,5 @@ export function createSandboxGenerationProvider(options: { stepDelayMs?: number 
   };
 }
 
-export const arkGenerationProvider = createArkGenerationProvider();
-export const sandboxGenerationProvider = createSandboxGenerationProvider();
+export const sandboxImageGenerationProvider = createSandboxImageGenerationProvider();
+export const sandboxVideoGenerationProvider = createSandboxVideoGenerationProvider();

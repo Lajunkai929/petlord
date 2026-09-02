@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { StoredGenerationProviderConfiguration } from "./providers/types";
 
 export const workspaceEntityTypes = ["project", "identity", "style", "template"] as const;
 export type WorkspaceEntityType = typeof workspaceEntityTypes[number];
@@ -16,6 +17,10 @@ interface StateRow {
 
 interface AgentEventRow extends StateRow {
   event_id: string;
+}
+
+interface ProviderRow extends StateRow {
+  provider_id: string;
 }
 
 export class SqliteStore {
@@ -49,6 +54,17 @@ export class SqliteStore {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS generation_providers (
+        provider_id TEXT PRIMARY KEY,
+        provider_type TEXT NOT NULL,
+        capability TEXT NOT NULL,
+        data_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS generation_providers_capability_idx
+        ON generation_providers(capability, created_at ASC);
 
       CREATE TABLE IF NOT EXISTS media_assets (
         media_id TEXT PRIMARY KEY,
@@ -137,6 +153,42 @@ export class SqliteStore {
       this.database.exec("ROLLBACK");
       throw error;
     }
+  }
+
+  listGenerationProviders(): StoredGenerationProviderConfiguration[] {
+    const rows = this.database.prepare(`
+      SELECT provider_id, data_json FROM generation_providers ORDER BY created_at ASC
+    `).all() as unknown as ProviderRow[];
+    return rows.map((row) => JSON.parse(row.data_json) as StoredGenerationProviderConfiguration);
+  }
+
+  getGenerationProvider(id: string): StoredGenerationProviderConfiguration | undefined {
+    const row = this.database.prepare("SELECT data_json FROM generation_providers WHERE provider_id = ?")
+      .get(id) as unknown as StateRow | undefined;
+    return row ? JSON.parse(row.data_json) as StoredGenerationProviderConfiguration : undefined;
+  }
+
+  upsertGenerationProvider(configuration: StoredGenerationProviderConfiguration) {
+    this.database.prepare(`
+      INSERT INTO generation_providers(provider_id, provider_type, capability, data_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(provider_id) DO UPDATE SET
+        provider_type = excluded.provider_type,
+        capability = excluded.capability,
+        data_json = excluded.data_json,
+        updated_at = excluded.updated_at
+    `).run(
+      configuration.id,
+      configuration.type,
+      configuration.capability,
+      JSON.stringify(configuration),
+      configuration.createdAt,
+      configuration.updatedAt,
+    );
+  }
+
+  deleteGenerationProvider(id: string) {
+    this.database.prepare("DELETE FROM generation_providers WHERE provider_id = ?").run(id);
   }
 
   upsertMedia(input: { id: string; uri: string; mimeType: string; [key: string]: unknown }) {

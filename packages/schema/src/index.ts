@@ -106,8 +106,10 @@ export const logicalStateSchema = z.object({
 
 export const generationSettingsSchema = z
   .object({
+    imageProviderId: z.string().uuid().optional(),
     imageModel: z.string().min(1),
     imageMode: z.literal("native-image"),
+    videoProviderId: z.string().uuid().optional(),
     videoModel: z.string().min(1),
     imageResolution: z.enum(["1K", "2K"]),
     imageCandidateCount: z.number().int().min(1).max(5).default(3),

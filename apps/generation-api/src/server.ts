@@ -11,25 +11,22 @@ import { URL } from "node:url";
 import ffmpegPath from "ffmpeg-static";
 import { z } from "zod";
 import {
-  imageModelOptions,
   estimateImageGenerationCost,
   estimateVideoGenerationCost,
   calculateVideoGenerationCostFromTokens,
   squareVideoPixels,
-  videoModelOptions,
   type GeneratedMedia,
+  type GenerationProviderCapability,
   type PersistentGenerationJob,
 } from "@petlord/generation";
 import { adaptiveAlphaExpression, alphaCoverage, detectBackgroundPalette, type NormalizedBackgroundColor } from "./transparency";
-import { normalizeArkImageRequest } from "./arkImageRequest";
 import { recoverGenerationJobAfterRestart } from "./jobRecovery";
 import { SqliteStore, workspaceEntityTypes, type WorkspaceEntityType } from "./sqliteStore";
 import { normalizeAgentPayload } from "@petlord/agent-bridge";
 import { agentEventSchema, agentEventSourceSchema, type AgentEvent } from "@petlord/schema";
+import { createProviderSchema, GenerationProviderRegistry, updateProviderSchema } from "./providers/registry";
 
 const port = Number(process.env.PETLORD_API_PORT ?? 4312);
-const apiKey = process.env.ARK_API_KEY;
-const arkBaseUrl = process.env.ARK_BASE_URL ?? "https://ark.cn-beijing.volces.com/api/v3";
 const mediaDirectory = fileURLToPath(new URL("../../../runtime-data/generated/", import.meta.url));
 const nativeDirectory = fileURLToPath(new URL("../../../runtime-data/native/", import.meta.url));
 const foregroundMaskerSource = fileURLToPath(new URL("../native/ForegroundMasker.swift", import.meta.url));
@@ -37,53 +34,12 @@ const foregroundMaskerBinary = join(nativeDirectory, "foreground-masker");
 const jobsFile = fileURLToPath(new URL("../../../runtime-data/generation-jobs.json", import.meta.url));
 const databaseFile = fileURLToPath(new URL("../../../runtime-data/petlord.sqlite", import.meta.url));
 const sqliteStore = new SqliteStore(databaseFile);
+const providerRegistry = new GenerationProviderRegistry(sqliteStore);
 const cachedMedia = new Map<string, string>();
 const runningJobs = new Set<string>();
 const maxConcurrentJobs = 2;
-const allowedImageModels = new Set(imageModelOptions.filter((model) => model.mode === "native-image").map((model) => model.id));
-const allowedVideoModels = new Set(videoModelOptions.map((model) => model.id));
 const execFileAsync = promisify(execFile);
 let foregroundMaskerBuild: Promise<string> | undefined;
-
-const imageRequestSchema = z.object({
-  model: z.string().refine((model) => allowedImageModels.has(model as never), "Unsupported image model."),
-  prompt: z.string().min(1).max(20_000),
-  image: z.array(z.string()).max(10).optional(),
-  size: z.enum(["1K", "2K", "1024x1024", "2048x2048"]),
-  sequential_image_generation: z.enum(["auto", "disabled"]),
-  sequential_image_generation_options: z.object({ max_images: z.number().int().min(2).max(5) }).optional(),
-  output_format: z.literal("png").optional(),
-  response_format: z.enum(["url", "b64_json"]),
-  watermark: z.literal(false),
-}).superRefine((request, context) => {
-  if (request.sequential_image_generation === "auto" && !request.sequential_image_generation_options) {
-    context.addIssue({ code: "custom", path: ["sequential_image_generation_options"], message: "Candidate generation requires max_images." });
-  }
-});
-
-const contentItemSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("text"), text: z.string().min(1).max(20_000) }),
-  z.object({
-    type: z.literal("image_url"),
-    image_url: z.object({ url: z.string().min(1) }),
-    role: z.enum(["first_frame", "last_frame", "reference_image"]),
-  }),
-]);
-
-const videoRequestSchema = z.object({
-  model: z.string().refine((model) => allowedVideoModels.has(model as never), "Unsupported video model."),
-  content: z.array(contentItemSchema).min(1).max(12),
-  return_last_frame: z.literal(true),
-  generate_audio: z.literal(false).optional(),
-  resolution: z.enum(["480p", "720p", "1080p"]),
-  ratio: z.literal("1:1"),
-  duration: z.number().int().min(2).max(15).optional(),
-  watermark: z.literal(false),
-}).superRefine((request, context) => {
-  if (request.model.startsWith("doubao-seedance-2-") && request.duration !== undefined && request.duration < 4) {
-    context.addIssue({ code: "custom", path: ["duration"], message: "Seedance 2.0 duration must be between 4 and 15 seconds." });
-  }
-});
 
 const jobSubmissionSchema = z.object({
   id: z.string().uuid(),
@@ -95,7 +51,8 @@ const jobSubmissionSchema = z.object({
     entityId: z.string().min(1),
     label: z.string().min(1),
   }),
-  arkType: z.enum(["image", "video"]),
+  capability: z.enum(["image", "video"]),
+  providerId: z.string().uuid().optional(),
   request: z.unknown(),
   assembledPrompt: z.string().optional(),
   chromaKeyColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
@@ -147,8 +104,10 @@ const agentEventIngestSchema = z.object({
 const agentEventAcknowledgeSchema = z.object({ opened: z.boolean().default(false) });
 
 interface StoredJob extends PersistentGenerationJob {
-  arkType: "image" | "video";
-  arkRequest?: unknown;
+  providerId: string;
+  provider: string;
+  providerCapability: GenerationProviderCapability;
+  providerRequest?: unknown;
   remoteTaskId?: string;
   postprocess?: {
     transparentVideo: boolean;
@@ -498,36 +457,6 @@ async function createPingPongMedia(input: z.infer<typeof pingPongMediaSchema>) {
   };
 }
 
-async function persistArkPayload(payload: unknown) {
-  if (!payload || typeof payload !== "object") return payload;
-  const result = structuredClone(payload) as {
-    data?: Array<{ url?: string }>;
-    status?: string;
-    content?: {
-      video_url?: string;
-      last_frame_url?: string;
-      last_frame?: { url?: string } | string;
-      image_url?: string;
-    };
-  };
-  if (result.data) {
-    for (const item of result.data) {
-      if (item.url) item.url = await cacheRemoteMedia(item.url);
-    }
-  }
-  if (result.status === "succeeded" && result.content) {
-    if (result.content.video_url) result.content.video_url = await cacheRemoteMedia(result.content.video_url);
-    if (result.content.last_frame_url) result.content.last_frame_url = await cacheRemoteMedia(result.content.last_frame_url);
-    if (result.content.image_url) result.content.image_url = await cacheRemoteMedia(result.content.image_url);
-    if (typeof result.content.last_frame === "string") {
-      result.content.last_frame = await cacheRemoteMedia(result.content.last_frame);
-    } else if (result.content.last_frame?.url) {
-      result.content.last_frame.url = await cacheRemoteMedia(result.content.last_frame.url);
-    }
-  }
-  return result;
-}
-
 async function serveMedia(request: IncomingMessage, response: ServerResponse, filename: string) {
   if (!/^[A-Za-z0-9-]+\.(mp4|webm|png|webp|jpg|jpeg|bin)$/.test(filename)) {
     return writeJson(response, 400, { error: { message: "Invalid media path." } });
@@ -587,30 +516,8 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-async function arkRequest(path: string, init?: RequestInit) {
-  if (!apiKey) {
-    return { status: 503, payload: { error: { message: "ARK_API_KEY 未配置" } } };
-  }
-  const response = await fetch(`${arkBaseUrl}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      ...init?.headers,
-    },
-  });
-  const text = await response.text();
-  let payload: unknown;
-  try {
-    payload = JSON.parse(text);
-  } catch {
-    payload = { error: { message: text || `Ark returned ${response.status}.` } };
-  }
-  return { status: response.status, payload };
-}
-
 function publicJob(job: StoredJob): PersistentGenerationJob {
-  const { arkType: _arkType, arkRequest: _arkRequest, remoteTaskId: _remoteTaskId, postprocess: _postprocess, ...visible } = job;
+  const { providerCapability: _providerCapability, providerRequest: _providerRequest, remoteTaskId: _remoteTaskId, postprocess: _postprocess, ...visible } = job;
   return visible;
 }
 
@@ -671,20 +578,6 @@ async function loadJobs() {
   }
 }
 
-function arkError(payload: unknown, status: number) {
-  const candidate = payload as { error?: { message?: string }; message?: string } | undefined;
-  return candidate?.error?.message ?? candidate?.message ?? `Ark request failed with ${status}.`;
-}
-
-function videoTail(payload: {
-  content?: { last_frame_url?: string; last_frame?: string | { url?: string }; image_url?: string };
-}) {
-  const lastFrame = payload.content?.last_frame;
-  return payload.content?.last_frame_url ??
-    (typeof lastFrame === "string" ? lastFrame : lastFrame?.url) ??
-    payload.content?.image_url;
-}
-
 async function updateStoredJob(job: StoredJob, patch: Partial<StoredJob>) {
   Object.assign(job, patch, { updatedAt: new Date().toISOString() });
   jobs.set(job.id, job);
@@ -696,31 +589,27 @@ async function runStoredJob(job: StoredJob) {
   runningJobs.add(job.id);
   const startedAt = Date.now();
   try {
-    if (job.arkType === "image") {
-      const body = imageRequestSchema.parse(job.arkRequest);
+    const provider = providerRegistry.runtime(job.providerId);
+    if (provider.capability !== job.providerCapability) {
+      throw new Error("The provider capability saved with this job no longer matches its configuration.");
+    }
+    if (provider.capability === "image") {
+      const body = provider.validateRequest(job.providerRequest) as { prompt: string; resolution: "1K" | "2K"; model: string };
       await updateStoredJob(job, { status: "running", progress: 20 });
-      const response = await arkRequest("/images/generations", { method: "POST", body: JSON.stringify(normalizeArkImageRequest(body)) });
-      if (response.status >= 300) throw new Error(arkError(response.payload, response.status));
-      const payload = await persistArkPayload(response.payload) as {
-        model?: string;
-        data?: Array<{ url?: string; b64_json?: string }>;
-      };
-      const rawImages: GeneratedMedia[] = (payload.data ?? []).flatMap((item) => {
-        const uri = item.url ?? (item.b64_json ? `data:image/png;base64,${item.b64_json}` : undefined);
-        return uri ? [{
-          uri,
-          mimeType: uri.includes(".png") ? "image/png" : "image/jpeg",
-          provider: "volcengine-ark",
-          model: payload.model ?? job.model,
-        }] : [];
-      });
+      const generated = await provider.generate(body);
       const images: GeneratedMedia[] = [];
-      for (const rawImage of rawImages) {
-        const processed = await normalizeGeneratedImage(rawImage.uri, body.size, body.model);
+      for (const rawImage of generated.images) {
+        const sourceUri = rawImage.url
+          ? await cacheRemoteMedia(rawImage.url)
+          : rawImage.dataUrl
+            ? (await saveDataUrl(rawImage.dataUrl)).uri
+            : undefined;
+        if (!sourceUri) continue;
+        const processed = await normalizeGeneratedImage(sourceUri, body.resolution, body.model);
         images.push({
           ...processed,
-          provider: "volcengine-ark",
-          model: payload.model ?? job.model,
+          provider: provider.type,
+          model: generated.model ?? job.model,
         });
       }
       if (images.length === 0) throw new Error("图片模型没有返回可用图片");
@@ -733,45 +622,32 @@ async function runStoredJob(job: StoredJob) {
           const actual = estimateImageGenerationCost(job.model, images.length)?.maximumCny;
           return job.cost && actual !== undefined ? { ...job.cost, status: "settled" as const, source: "unit-output" as const, actualCny: actual } : job.cost;
         })(),
-        arkRequest: undefined,
+        providerRequest: undefined,
       });
       return;
     }
 
     if (!job.remoteTaskId) {
-      const body = videoRequestSchema.parse(job.arkRequest);
+      const body = provider.validateRequest(job.providerRequest);
       await updateStoredJob(job, { status: "submitting", progress: 6 });
-      const response = await arkRequest("/contents/generations/tasks", { method: "POST", body: JSON.stringify(body) });
-      if (response.status >= 300) throw new Error(arkError(response.payload, response.status));
-      const taskId = (response.payload as { id?: string }).id;
-      if (!taskId) throw new Error("Seedance 没有返回任务 ID");
+      const taskId = await provider.submit(body);
       await updateStoredJob(job, {
         status: "queued",
         progress: 12,
         remoteTaskId: taskId,
-        arkRequest: undefined,
+        providerRequest: undefined,
       });
     }
 
     for (;;) {
-      const response = await arkRequest(`/contents/generations/tasks/${job.remoteTaskId}`);
-      if (response.status >= 300) throw new Error(arkError(response.payload, response.status));
-      const payload = response.payload as {
-        status?: string;
-        model?: string;
-        duration?: string | number;
-        error?: { message?: string };
-        content?: { video_url?: string; last_frame_url?: string; last_frame?: string | { url?: string }; image_url?: string };
-        usage?: { completion_tokens?: number; total_tokens?: number };
-      };
-      if (["failed", "cancelled", "expired"].includes(payload.status ?? "")) {
-        throw new Error(payload.error?.message ?? `视频任务状态：${payload.status}`);
+      const task = await provider.poll(job.remoteTaskId!);
+      if (["failed", "cancelled", "expired"].includes(task.status)) {
+        throw new Error(task.error ?? `视频任务状态：${task.status}`);
       }
-      if (payload.status === "succeeded") {
-        const persisted = await persistArkPayload(payload) as typeof payload;
-        let tailUri = videoTail(persisted);
+      if (task.status === "succeeded") {
+        let tailUri = task.tailUrl ? await cacheRemoteMedia(task.tailUrl) : undefined;
         if (!tailUri) throw new Error("Seedance 已完成，但没有返回尾帧图片");
-        let videoUri = persisted.content?.video_url;
+        let videoUri = task.videoUrl ? await cacheRemoteMedia(task.videoUrl) : undefined;
         let videoMimeType = "video/mp4";
         let pixels = job.postprocess ? squareVideoPixels(job.postprocess.resolution) : undefined;
         let hasAlpha = false;
@@ -801,13 +677,13 @@ async function runStoredJob(job: StoredJob) {
         const tail: GeneratedMedia = {
           uri: tailUri,
           mimeType: "image/png",
-          provider: "volcengine-ark",
-          model: persisted.model ?? job.model,
+          provider: provider.type,
+          model: task.model ?? job.model,
           pixelWidth: pixels,
           pixelHeight: pixels,
           hasAlpha,
         };
-        const durationSeconds = Number(persisted.duration);
+        const durationSeconds = task.durationSeconds;
         if (job.kind === "state-image") {
           await updateStoredJob(job, {
             status: "succeeded",
@@ -823,8 +699,8 @@ async function runStoredJob(job: StoredJob) {
               video: {
                 uri: videoUri,
                 mimeType: videoMimeType,
-                provider: "volcengine-ark",
-                model: persisted.model ?? job.model,
+                provider: provider.type,
+                model: task.model ?? job.model,
                 pixelWidth: pixels,
                 pixelHeight: pixels,
                 silent: true,
@@ -837,11 +713,11 @@ async function runStoredJob(job: StoredJob) {
                 transparencyMethod,
                 alphaCoverage: normalizedAlphaCoverage,
               },
-              durationMs: Number.isFinite(durationSeconds) ? durationSeconds * 1000 : undefined,
+              durationMs: durationSeconds !== undefined ? durationSeconds * 1000 : undefined,
             },
             cost: (() => {
               if (!job.cost) return job.cost;
-              const completionTokens = Number(persisted.usage?.completion_tokens);
+              const completionTokens = Number(task.completionTokens);
               const providerActual = calculateVideoGenerationCostFromTokens(job.model, completionTokens);
               if (providerActual !== null) {
                 return {
@@ -852,7 +728,7 @@ async function runStoredJob(job: StoredJob) {
                   basis: `火山任务返回 ${completionTokens.toLocaleString("zh-CN")} 个视频 token`,
                 };
               }
-              if (!Number.isFinite(durationSeconds) || !job.postprocess) return job.cost;
+              if (durationSeconds === undefined || !job.postprocess) return job.cost;
               const reconciled = estimateVideoGenerationCost({
                 model: job.model,
                 resolution: job.postprocess.resolution,
@@ -873,8 +749,8 @@ async function runStoredJob(job: StoredJob) {
       }
       const elapsed = Date.now() - startedAt;
       await updateStoredJob(job, {
-        status: payload.status === "running" ? "running" : "queued",
-        progress: payload.status === "running" ? Math.min(92, 28 + Math.round(elapsed / 8000)) : 12,
+        status: task.status === "running" ? "running" : "queued",
+        progress: task.status === "running" ? Math.min(92, 28 + Math.round(elapsed / 8000)) : 12,
       });
       await new Promise((resolve) => setTimeout(resolve, 8000));
     }
@@ -1013,6 +889,42 @@ const server = createServer(async (request, response) => {
       });
     }
 
+    if (url.pathname === "/api/providers") {
+      if (request.method === "GET") return writeJson(response, 200, providerRegistry.snapshot());
+      if (request.method === "POST") {
+        const input = createProviderSchema.parse(await readJson(request));
+        return writeJson(response, 201, providerRegistry.create(input));
+      }
+    }
+
+    const providerTestMatch = url.pathname.match(/^\/api\/providers\/([^/]+)\/test$/);
+    if (request.method === "POST" && providerTestMatch) {
+      const id = decodeURIComponent(providerTestMatch[1]);
+      if (!providerRegistry.getPublic(id)) return writeJson(response, 404, { error: { message: "Provider not found." } });
+      return writeJson(response, 200, await providerRegistry.test(id));
+    }
+
+    const providerMatch = url.pathname.match(/^\/api\/providers\/([^/]+)$/);
+    if (providerMatch) {
+      const id = decodeURIComponent(providerMatch[1]);
+      if (request.method === "PUT") {
+        const input = updateProviderSchema.parse(await readJson(request));
+        const updated = providerRegistry.update(id, input);
+        return updated
+          ? writeJson(response, 200, updated)
+          : writeJson(response, 404, { error: { message: "Provider not found." } });
+      }
+      if (request.method === "DELETE") {
+        const activeJob = [...jobs.values()].find((job) => job.providerId === id && !["succeeded", "failed"].includes(job.status));
+        if (activeJob) {
+          return writeJson(response, 409, { error: { message: "This provider is still used by an active generation job." } });
+        }
+        return providerRegistry.delete(id)
+          ? writeJson(response, 200, { deleted: true })
+          : writeJson(response, 404, { error: { message: "Provider not found." } });
+      }
+    }
+
     if (request.method === "GET" && url.pathname === "/api/jobs") {
       const visible = [...jobs.values()]
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
@@ -1028,7 +940,7 @@ const server = createServer(async (request, response) => {
       if (job.status !== "failed") {
         return writeJson(response, 409, { error: { message: "Only failed generation jobs can be resumed." } });
       }
-      if (!job.remoteTaskId && !job.arkRequest) {
+      if (!job.remoteTaskId && !job.providerRequest) {
         return writeJson(response, 409, { error: { message: "This job no longer contains enough provider state to resume safely." } });
       }
       await updateStoredJob(job, {
@@ -1052,21 +964,25 @@ const server = createServer(async (request, response) => {
       const input = jobSubmissionSchema.parse(await readJson(request));
       const existing = jobs.get(input.id);
       if (existing) return writeJson(response, 200, publicJob(existing));
-      const arkRequest = input.arkType === "image"
-        ? imageRequestSchema.parse(input.request)
-        : videoRequestSchema.parse(input.request);
+      if ((input.kind === "state-image") !== (input.capability === "image")) {
+        return writeJson(response, 400, { error: { message: "Generation job kind does not match provider capability." } });
+      }
+      const provider = providerRegistry.resolve(input.capability, input.providerId);
+      const providerRequest = provider.validateRequest(input.request);
       const createdAt = new Date().toISOString();
       const job: StoredJob = {
         id: input.id,
         kind: input.kind,
+        providerId: provider.id,
+        provider: provider.type,
         status: "queued",
         progress: 0,
         model: input.model,
         trigger: input.trigger,
         createdAt,
         updatedAt: createdAt,
-        arkType: input.arkType,
-        arkRequest,
+        providerCapability: input.capability,
+        providerRequest,
         postprocess: input.postprocess,
         assembledPrompt: input.assembledPrompt,
         chromaKeyColor: input.chromaKeyColor,
@@ -1078,37 +994,10 @@ const server = createServer(async (request, response) => {
       return writeJson(response, 202, publicJob(job));
     }
 
-    if (request.method === "GET" && url.pathname === "/api/ark/health") {
-      return writeJson(response, 200, {
-        configured: Boolean(apiKey),
-        provider: "volcengine-ark",
-        defaultVideoModel: "doubao-seedance-2-0-mini-260615",
-        defaultImageModel: "doubao-seedream-5-0-260128",
-      });
-    }
-
     if (request.method === "GET" && url.pathname.startsWith("/api/media/")) {
       return await serveMedia(request, response, url.pathname.slice("/api/media/".length));
     }
 
-    if (request.method === "POST" && url.pathname === "/api/ark/images/generations") {
-      const body = imageRequestSchema.parse(await readJson(request));
-      const result = await arkRequest("/images/generations", { method: "POST", body: JSON.stringify(normalizeArkImageRequest(body)) });
-      return writeJson(response, result.status, result.status < 300 ? await persistArkPayload(result.payload) : result.payload);
-    }
-
-    if (request.method === "POST" && url.pathname === "/api/ark/video/tasks") {
-      const body = videoRequestSchema.parse(await readJson(request));
-      const result = await arkRequest("/contents/generations/tasks", { method: "POST", body: JSON.stringify(body) });
-      return writeJson(response, result.status, result.payload);
-    }
-
-    if (request.method === "GET" && url.pathname.startsWith("/api/ark/video/tasks/")) {
-      const taskId = decodeURIComponent(url.pathname.slice("/api/ark/video/tasks/".length));
-      if (!/^cgt-[A-Za-z0-9_-]+$/.test(taskId)) return writeJson(response, 400, { error: { message: "Invalid task id." } });
-      const result = await arkRequest(`/contents/generations/tasks/${taskId}`);
-      return writeJson(response, result.status, result.status < 300 ? await persistArkPayload(result.payload) : result.payload);
-    }
 
     return writeJson(response, 404, { error: { message: "Not found." } });
   } catch (error) {

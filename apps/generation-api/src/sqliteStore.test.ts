@@ -18,6 +18,17 @@ describe("SQLite workspace store", () => {
     const first = new SqliteStore(path);
     first.upsertEntity("project", "project-a", { id: "project-a", name: "球球" });
     first.setState("workspace-registry", { activeProjectId: "project-a" });
+    first.upsertGenerationProvider({
+      id: "provider-a",
+      type: "volcengine-ark",
+      capability: "image",
+      name: "Ark Images",
+      apiKey: "secret-api-key",
+      baseUrl: "https://ark.example.com/api/v3",
+      enabled: true,
+      createdAt: "2026-09-02T00:00:00.000Z",
+      updatedAt: "2026-09-02T00:00:00.000Z",
+    });
     first.replaceGenerationJobs([{ id: "job-a", createdAt: "2026-09-02T00:00:00.000Z", updatedAt: "2026-09-02T00:00:01.000Z" }]);
     first.upsertMedia({ id: "media-a", uri: "/api/media/a.png", mimeType: "image/png" });
     first.upsertAgentEvent({
@@ -34,6 +45,8 @@ describe("SQLite workspace store", () => {
     const reopened = new SqliteStore(path);
     expect(reopened.listEntities("project")).toEqual([{ id: "project-a", name: "球球" }]);
     expect(reopened.getState("workspace-registry")).toEqual({ activeProjectId: "project-a" });
+    expect(reopened.getGenerationProvider("provider-a")).toMatchObject({ apiKey: "secret-api-key", capability: "image" });
+    expect(reopened.listGenerationProviders()).toHaveLength(1);
     expect(reopened.listGenerationJobs()).toHaveLength(1);
     expect(reopened.listMedia()).toEqual([{ id: "media-a", uri: "/api/media/a.png", mimeType: "image/png" }]);
     expect(reopened.listAgentEvents()).toEqual([expect.objectContaining({ id: "event-a", source: "codex" })]);
@@ -44,6 +57,26 @@ describe("SQLite workspace store", () => {
     }));
     expect(reopened.listAgentEvents({ unreadOnly: true })).toHaveLength(0);
     reopened.close();
+  });
+
+  it("deletes one Provider without touching other capabilities", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "petlord-sqlite-"));
+    directories.push(directory);
+    const store = new SqliteStore(join(directory, "petlord.sqlite"));
+    const base = {
+      type: "volcengine-ark" as const,
+      apiKey: "secret-api-key",
+      baseUrl: "https://ark.example.com/api/v3",
+      enabled: true,
+      createdAt: "2026-09-02T00:00:00.000Z",
+      updatedAt: "2026-09-02T00:00:00.000Z",
+    };
+    store.upsertGenerationProvider({ ...base, id: "image-provider", capability: "image", name: "Images" });
+    store.upsertGenerationProvider({ ...base, id: "video-provider", capability: "video", name: "Video" });
+    store.deleteGenerationProvider("image-provider");
+    expect(store.getGenerationProvider("image-provider")).toBeUndefined();
+    expect(store.listGenerationProviders()).toEqual([expect.objectContaining({ id: "video-provider", capability: "video" })]);
+    store.close();
   });
 
   it("deduplicates connector retries by dedupe key", async () => {

@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assembleStateDraftPrompt,
-  createArkGenerationProvider,
-  createSandboxGenerationProvider,
+  createSandboxVideoGenerationProvider,
   calculateVideoGenerationCostFromTokens,
   estimateImageGenerationCost,
   estimateVideoGenerationCost,
@@ -14,8 +13,10 @@ import {
 } from "./index";
 
 const settings = {
+  imageProviderId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   imageModel: "doubao-seedream-5-0-260128",
   imageMode: "native-image" as const,
+  videoProviderId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   videoModel: "doubao-seedance-2-0-mini-260615",
   imageResolution: "1K" as const,
   imageCandidateCount: 3,
@@ -42,7 +43,7 @@ describe("generation provider contract", () => {
   });
 
   it("reports progress and returns the encoded tail as the actual state candidate", async () => {
-    const provider = createSandboxGenerationProvider({ stepDelayMs: 0 });
+    const provider = createSandboxVideoGenerationProvider({ stepDelayMs: 0 });
     const onProgress = vi.fn();
     const result = await provider.generateTransition(
       {
@@ -69,63 +70,6 @@ describe("generation provider contract", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
-  });
-
-  it("uses the native image API with the lowest square Seedream size", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
-      model: "doubao-seedream-5-0-260128",
-      data: [{ url: "https://example.com/state.png" }],
-    }), { status: 200, headers: { "Content-Type": "application/json" } }));
-    vi.stubGlobal("fetch", fetchMock);
-    const provider = createArkGenerationProvider();
-    const media = await provider.generateStateDraft({
-      identityReferenceUris: ["data:image/jpeg;base64,AA=="],
-      identityPrompt: "黑棕色小狗",
-      stylePrompt: "像素插画",
-      targetStateLabel: "醒来",
-      prompt: "抬头睁眼",
-      settings: { ...settings, imageMode: "native-image", imageModel: "doubao-seedream-5-0-260128", imageResolution: "2K" },
-    });
-    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-    expect(body).toMatchObject({ size: "2K", watermark: false });
-    expect(media.uri).toBe("https://example.com/state.png");
-  });
-
-  it("omits duration for smart Seedance transitions and consumes the returned real tail", async () => {
-    const fetchMock = vi.fn(async (input: string | URL | Request) => {
-      const url = String(input);
-      const payload = url.endsWith("/api/ark/video/tasks")
-        ? { id: "cgt-test" }
-        : {
-            id: "cgt-test",
-            status: "succeeded",
-            model: settings.videoModel,
-            duration: "5",
-            content: { video_url: "https://example.com/transition.mp4", last_frame_url: "https://example.com/tail.png" },
-          };
-      return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const provider = createArkGenerationProvider();
-    const result = await provider.generateTransition({
-      fromStateImageUri: "data:image/png;base64,AA==",
-      targetDraftImageUri: "data:image/png;base64,AA==",
-      identityReferenceUris: [],
-      identityPrompt: "黑棕色矮壮小狗",
-      stylePrompt: "2D 游戏角色",
-      prompt: "自然醒来",
-      settings,
-      durationMode: "smart",
-      transparentVideo: false,
-      transparencyKeyColor: "#00FF00",
-      transparencySimilarity: 0.34,
-      chromaBackgroundColor: "#00FF00",
-    });
-    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-    expect(body).toMatchObject({ resolution: "480p", ratio: "1:1", return_last_frame: true, generate_audio: false });
-    expect(body).not.toHaveProperty("duration");
-    expect(result.extractedTail.uri).toBe("https://example.com/tail.png");
-    expect(result.durationMs).toBe(5000);
   });
 
   it("submits resumable transition jobs with their navigation trigger", async () => {
@@ -160,21 +104,20 @@ describe("generation provider contract", () => {
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body).toMatchObject({
       kind: "transition-video",
-      arkType: "video",
+      capability: "video",
+      providerId: settings.videoProviderId,
       trigger: { entityType: "transition", entityId: "edge" },
-      request: { resolution: "480p", ratio: "1:1", return_last_frame: true, generate_audio: false },
+      request: { resolution: "480p", ratio: "1:1", firstFrame: "data:image/png;base64,AA==", lastFrame: "data:image/png;base64,AA==" },
       postprocess: { transparentVideo: true, resolution: "480p", keyColor: "#00FF00", similarity: 0.34 },
     });
-    expect(body.request).not.toHaveProperty("duration");
-    expect(body.request.generate_audio).toBe(false);
-    expect(body.request.content[0].text).toContain("#00FF00");
-    expect(body.request.content[0].text).toContain("位置、朝向和光轴必须从第一帧到最后一帧完全固定");
-    expect(body.request.content[0].text).toContain("禁止渐变、聚光、暗角、地面、水平线、投影、接触阴影");
-    expect(body.request.content[0].text).toContain("【角色身份】\n黑棕色矮壮小狗");
+    expect(body.request).not.toHaveProperty("durationSeconds");
+    expect(body.request.prompt).toContain("#00FF00");
+    expect(body.request.prompt).toContain("位置、朝向和光轴必须从第一帧到最后一帧完全固定");
+    expect(body.request.prompt).toContain("禁止渐变、聚光、暗角、地面、水平线、投影、接触阴影");
+    expect(body.request.prompt).toContain("【角色身份】\n黑棕色矮壮小狗");
     expect(body.cost).toMatchObject({ status: "estimated", estimatedMinCny: expect.any(Number), estimatedMaxCny: expect.any(Number) });
-    expect(body.assembledPrompt).toBe(body.request.content[0].text);
+    expect(body.assembledPrompt).toBe(body.request.prompt);
     expect(body.chromaKeyColor).toBe("#00FF00");
-    expect(body.request.content.slice(1).every((item: { role?: string }) => item.role === "reference_image")).toBe(true);
   });
 
   it("submits a 1K Seedream candidate group for state authority selection", async () => {
@@ -200,15 +143,15 @@ describe("generation provider contract", () => {
       settings,
     });
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-    expect(body).toMatchObject({ kind: "state-image", arkType: "image" });
+    expect(body).toMatchObject({ kind: "state-image", capability: "image", providerId: settings.imageProviderId });
     expect(body.request).toMatchObject({
       model: "doubao-seedream-5-0-260128",
-      size: "1K",
-      sequential_image_generation: "auto",
-      sequential_image_generation_options: { max_images: 3 },
+      resolution: "1K",
+      candidateCount: 3,
+      referenceImages: ["data:image/png;base64,AA=="],
     });
     expect(body.cost).toMatchObject({ status: "estimated", estimatedMinCny: 0.66, estimatedMaxCny: 0.66 });
-    expect(body.request).not.toHaveProperty("duration");
+    expect(body.request).not.toHaveProperty("durationSeconds");
     expect(body.assembledPrompt).toBe(body.request.prompt);
     expect(body.request.prompt).toContain("【参考图职责】");
     expect(body.request.prompt).toContain("【角色身份】\n黑棕色矮壮小狗");

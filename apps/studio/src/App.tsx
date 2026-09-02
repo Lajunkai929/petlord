@@ -216,7 +216,7 @@ function GraphArea({ studio }: { studio: StudioController }) {
         <div className="workspace-toolbar">
           <div><h1>状态图</h1></div>
           <div className="toolbar-actions">
-            <GenerationSettingsDialog settings={studio.project.generationSettings} apiConfigured={studio.apiConfigured} onChange={studio.updateGenerationSettings} />
+            <GenerationSettingsDialog settings={studio.project.generationSettings} providers={studio.generationProviders} onChange={studio.updateGenerationSettings} />
             <Suspense fallback={null}><SaveProjectTemplateDialog project={studio.project} onSave={studio.templateLibrary.saveCurrentProject} /></Suspense>
             <Suspense fallback={null}><AutomaticProductionDialog controller={automatic} /></Suspense>
             <Suspense fallback={null}><BatchProductionDialog controller={batch} /></Suspense>

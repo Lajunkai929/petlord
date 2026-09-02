@@ -5,6 +5,9 @@
   "description": "Create, animate, and run state-driven AI desktop pets — locally.",
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22.5"
+  },
   "workspaces": [
     "apps/*",
     "packages/*",

@@ -59,6 +59,7 @@ import { useProjectTemplateLibrary } from "./useProjectTemplateLibrary";
 import { readStudioRoute } from "../studioRoute";
 import { useStudioUrlState } from "./useStudioUrlState";
 import { applyGenerationContextSnapshot, resolveProjectGenerationContext } from "../generationContext";
+import { useGenerationProviders } from "./useGenerationProviders";
 
 const now = () => new Date().toISOString();
 
@@ -81,31 +82,35 @@ export function useStudioController() {
   const [busy, setBusy] = useState(false);
   const [previewTransitionId, setPreviewTransitionId] = useState<string | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
-  const [notice, setNotice] = useState("正在检查火山方舟连接");
-  const [apiConfigured, setApiConfigured] = useState<boolean | null>(null);
+  const [notice, setNotice] = useState("正在检查生成服务");
   const [taskCenterOpen, setTaskCenterOpen] = useState(false);
   const [graphLayoutRevision, setGraphLayoutRevision] = useState(0);
   const referenceInput = useRef<HTMLInputElement>(null);
+  const generationProviders = useGenerationProviders();
+  const apiConfigured = generationProviders.status === "loading"
+    ? null
+    : generationProviders.status === "online"
+      ? Boolean(generationProviders.snapshot?.defaults.image && generationProviders.snapshot?.defaults.video)
+      : false;
   const { projectJobs, activeJobs, allJobs, allActiveJobs, upsertPersistentJob } = usePersistentGeneration(project, setProject);
   const artifacts = new Map(project.artifacts.map((artifact) => [artifact.id, artifact]));
+  const imageProviderType = generationProviders.snapshot?.providers.find((provider) => provider.id === (
+    project.generationSettings.imageProviderId ?? generationProviders.snapshot?.defaults.image
+  ))?.type ?? "unconfigured";
+  const videoProviderType = generationProviders.snapshot?.providers.find((provider) => provider.id === (
+    project.generationSettings.videoProviderId ?? generationProviders.snapshot?.defaults.video
+  ))?.type ?? "unconfigured";
 
   useEffect(() => {
-    let cancelled = false;
-    fetch("/api/ark/health")
-      .then((response) => response.json())
-      .then((health: { configured?: boolean }) => {
-        if (cancelled) return;
-        const configured = Boolean(health.configured);
-        setApiConfigured(configured);
-        setNotice(configured ? "火山方舟已连接，默认 Seedance 2.0 Mini" : "ARK_API_KEY 未配置");
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setApiConfigured(false);
-        setNotice("生成服务未启动");
-      });
-    return () => { cancelled = true; };
-  }, []);
+    if (generationProviders.status === "loading") return;
+    if (generationProviders.status === "offline") {
+      setNotice("生成服务未启动");
+      return;
+    }
+    const imageReady = Boolean(generationProviders.snapshot?.defaults.image);
+    const videoReady = Boolean(generationProviders.snapshot?.defaults.video);
+    setNotice(imageReady && videoReady ? "图片与视频 Provider 已就绪" : "生成服务已启动，请配置 Provider");
+  }, [generationProviders.snapshot?.defaults.image, generationProviders.snapshot?.defaults.video, generationProviders.status]);
 
   useEffect(() => {
     setPreviewTransitionId(null);
@@ -496,7 +501,7 @@ export function useStudioController() {
         status: "queued",
         progress: 0,
         prompt: motionPrompt,
-        provider: "volcengine-ark",
+        provider: videoProviderType,
         model: settings.videoModel,
         createdAt: now(),
         outputArtifactIds: [],
@@ -623,7 +628,7 @@ export function useStudioController() {
         status: "queued",
         progress: 0,
         prompt,
-        provider: "volcengine-ark",
+        provider: imageProviderType,
         model: project.generationSettings.imageModel,
         createdAt: now(),
         outputArtifactIds: [],
@@ -1129,7 +1134,7 @@ export function useStudioController() {
         status: "queued",
         progress: 0,
         prompt: transition.prompt,
-        provider: "volcengine-ark",
+        provider: videoProviderType,
         model: project.generationSettings.videoModel,
         createdAt: now(),
         outputArtifactIds: [],
@@ -1430,7 +1435,7 @@ export function useStudioController() {
 
   return {
     project: resolvedProject, projects: workspace.projects, identities: workspace.identities, activeIdentity: workspace.activeIdentity, workspaceStorageError: workspace.storageError,
-    activeArea, previewSessionRevision, selection, mobileInspectorOpen, busy, previewing, theme, notice, apiConfigured, videoBackgroundSettings, customerReview, graphLayoutRevision, appearance, styleLibrary, templateLibrary,
+    activeArea, previewSessionRevision, selection, mobileInspectorOpen, busy, previewing, theme, notice, apiConfigured, generationProviders, videoBackgroundSettings, customerReview, graphLayoutRevision, appearance, styleLibrary, templateLibrary,
     taskCenterOpen, referenceInput, projectJobs, activeJobs, allJobs, allActiveJobs, artifacts, transitionPreview,
     setActiveArea, setSelection, setMobileInspectorOpen, setTaskCenterOpen, updateProject, moveState, autoArrangeStates, updateGenerationSettings,
     activateCustomerProject, createCustomerProject, createIdentityProfile, activateIdentityProfile, updateIdentityProfile, updateOrder, setTodoPluginIncluded, setAgentActivityPluginIncluded,

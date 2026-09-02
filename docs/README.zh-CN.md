@@ -33,3 +33,18 @@ PetLord 提供两套可组合、可复用的创作能力：
 为点击、双击、悬停、拖拽、空闲和定时等条件配置动作，决定桌面搭子何时切换状态、播放什么过渡动作。
 
 ![PetLord 状态及过渡动作网络](../assets/petlord-state-graph.png)
+
+## 本地运行
+
+PetLord 需要 Node.js 22.5 或更高版本。项目启动不需要预先配置 API Token。
+
+```bash
+git clone https://github.com/Lajunkai929/petlord.git
+cd petlord
+npm install
+npm run dev
+```
+
+打开 `http://localhost:4310`，在状态图工具栏进入「模型与 Provider」。图片和视频 Provider 独立配置；凭据只保存在本机 `runtime-data/petlord.sqlite`，设置接口不会把凭据返回浏览器。每种能力都可以保存多个 Provider，并按项目选择。
+
+提交改动前运行 `npm run check`，它会依次执行类型检查、测试和所有工作区的生产构建。
