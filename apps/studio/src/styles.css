@@ -2204,9 +2204,10 @@ button:active:not(:disabled) {
   font-size: calc(19px + var(--ui-font-adjust));
 }
 
-.package-summary .primary-button {
-  grid-column: 1 / -1;
-}
+.package-publish-actions { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 8px; }
+.package-publish-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.package-published-status { display: flex; grid-column: 1 / -1; align-items: flex-start; gap: 6px; padding: 9px 10px; border-radius: 8px; background: var(--accent-soft); color: var(--accent) !important; font-size: calc(8px + var(--ui-font-adjust)) !important; line-height: 1.5; }
+.package-published-status svg { flex: 0 0 auto; margin-top: 1px; }
 
 .package-export-note { grid-column: 1 / -1; color: var(--text-muted); font-size: calc(8px + var(--ui-font-adjust)); line-height: 1.5; text-align: center; }
 .package-download-fallback { display: inline-flex; grid-column: 1 / -1; align-items: center; justify-content: center; gap: 5px; color: var(--accent); font-size: calc(8px + var(--ui-font-adjust)); text-decoration: none; }

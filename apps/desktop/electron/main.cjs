@@ -632,6 +632,51 @@ async function removePackage(key) {
   return listPackages();
 }
 
+function subscriptionServerUrl(value) {
+  const parsed = new URL(String(value ?? "").trim());
+  if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
+    throw new Error("订阅地址必须是有效的 HTTP 或 HTTPS 服务器地址。");
+  }
+  parsed.search = "";
+  parsed.hash = "";
+  parsed.pathname = parsed.pathname.replace(/\/api\/library(?:\/packages)?\/?$/, "").replace(/\/+$/, "");
+  return parsed.toString().replace(/\/+$/, "");
+}
+
+async function subscriptionResponse(response, operation) {
+  if (response.ok) return response;
+  const payload = await response.json().catch(() => undefined);
+  throw new Error(payload?.error?.message ?? `${operation}失败（HTTP ${response.status}）。`);
+}
+
+async function listSubscriptionPackages(serverUrl) {
+  const baseUrl = subscriptionServerUrl(serverUrl);
+  const response = await subscriptionResponse(await fetch(`${baseUrl}/api/library/packages`, {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(15_000),
+  }), "读取订阅");
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > 2 * 1024 * 1024) throw new Error("订阅列表超过 2 MB 安全限制。");
+  const text = await response.text();
+  if (Buffer.byteLength(text, "utf8") > 2 * 1024 * 1024) throw new Error("订阅列表超过 2 MB 安全限制。");
+  return JSON.parse(text);
+}
+
+async function downloadSubscriptionPackage(serverUrl, publicationId) {
+  if (!/^[a-f0-9]{64}$/.test(String(publicationId))) throw new Error("订阅包 ID 无效。");
+  const baseUrl = subscriptionServerUrl(serverUrl);
+  const response = await subscriptionResponse(await fetch(`${baseUrl}/api/library/packages/${publicationId}/download`, {
+    headers: { Accept: "application/vnd.petlord.package+gzip, application/octet-stream" },
+    signal: AbortSignal.timeout(60_000),
+  }), "下载订阅包");
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > 224 * 1024 * 1024) throw new Error("订阅包超过 224 MB 安全限制。");
+  const contents = Buffer.from(await response.arrayBuffer());
+  if (contents.byteLength === 0 || contents.byteLength > 224 * 1024 * 1024) throw new Error("订阅包大小无效。");
+  parsePackageSummary(contents, "subscription.petlord", "");
+  return contents;
+}
+
 async function loadSettings() {
   try {
     const stored = JSON.parse(await readFile(settingsPath(), "utf8"));
@@ -911,6 +956,8 @@ app.whenReady().then(async () => {
   ipcMain.handle("runtime:list-packages", () => listPackages());
   ipcMain.handle("runtime:activate-package", (_event, key) => activatePackage(String(key)));
   ipcMain.handle("runtime:remove-package", (_event, key) => removePackage(String(key)));
+  ipcMain.handle("runtime:list-subscription-packages", (_event, serverUrl) => listSubscriptionPackages(serverUrl));
+  ipcMain.handle("runtime:download-subscription-package", (_event, serverUrl, publicationId) => downloadSubscriptionPackage(serverUrl, publicationId));
   ipcMain.handle("runtime:export-diagnostics", () => exportDiagnostics());
   ipcMain.handle("runtime:report-error", (_event, input) => reportRuntimeError(input));
   ipcMain.handle("runtime:list-agent-events", (_event, input) => listAgentEvents(input));

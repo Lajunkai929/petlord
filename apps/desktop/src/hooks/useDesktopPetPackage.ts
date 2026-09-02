@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { petPackageBundleSchema, type PetPackageBundle, type PetPackageManifest } from "@petlord/schema";
+import { petPackageBundleSchema, publishedPackageSummarySchema, type PetPackageBundle, type PetPackageManifest, type PublishedPackageSummary } from "@petlord/schema";
 import type { DesktopPackageContents, InstalledPackageSummary, PackageImportOptions } from "../desktopBridge";
 
 const databaseName = "petlord-desktop";
@@ -7,6 +7,50 @@ const storeName = "packages";
 const legacyActiveKey = "active";
 const activePointerKey = "active-key";
 const bundleKeyPrefix = "bundle:";
+const subscriptionUrlKey = "petlord.desktop.subscription-url.v1";
+const defaultSubscriptionUrl = "http://127.0.0.1:4312";
+
+export function normalizeSubscriptionServerUrl(value: string) {
+  const parsed = new URL(value.trim());
+  if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
+    throw new Error("订阅地址必须是有效的 HTTP 或 HTTPS 服务器地址。");
+  }
+  parsed.search = "";
+  parsed.hash = "";
+  parsed.pathname = parsed.pathname.replace(/\/api\/library(?:\/packages)?\/?$/, "").replace(/\/+$/, "");
+  return parsed.toString().replace(/\/+$/, "");
+}
+
+async function remoteResponse(response: Response, operation: string) {
+  if (response.ok) return response;
+  const payload = await response.json().catch(() => undefined) as { error?: { message?: string } } | undefined;
+  throw new Error(payload?.error?.message ?? `${operation}失败（HTTP ${response.status}）。`);
+}
+
+export async function listRemotePackages(serverUrl: string) {
+  const normalized = normalizeSubscriptionServerUrl(serverUrl);
+  const payload = window.petLordDesktop?.listSubscriptionPackages
+    ? await window.petLordDesktop.listSubscriptionPackages(normalized)
+    : await remoteResponse(await fetch(`${normalized}/api/library/packages`, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(15_000),
+      }), "读取订阅").then((response) => response.json());
+  return publishedPackageSummarySchema.array().parse(payload);
+}
+
+export async function downloadRemotePackage(serverUrl: string, publicationId: string): Promise<DesktopPackageContents> {
+  const normalized = normalizeSubscriptionServerUrl(serverUrl);
+  if (window.petLordDesktop?.downloadSubscriptionPackage) {
+    return window.petLordDesktop.downloadSubscriptionPackage(normalized, publicationId);
+  }
+  const response = await remoteResponse(await fetch(`${normalized}/api/library/packages/${encodeURIComponent(publicationId)}/download`, {
+    headers: { Accept: "application/vnd.petlord.package+gzip, application/octet-stream" },
+    signal: AbortSignal.timeout(60_000),
+  }), "下载订阅包");
+  const contents = new Uint8Array(await response.arrayBuffer());
+  if (contents.byteLength === 0 || contents.byteLength > 224 * 1024 * 1024) throw new Error("订阅包大小无效。");
+  return contents;
+}
 
 export function sameNamePackageTarget(name: string, packages: InstalledPackageSummary[]) {
   const normalized = name.trim().toLocaleLowerCase();
@@ -240,6 +284,12 @@ export function useDesktopPetPackage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [pendingImport, setPendingImport] = useState<{ contents: DesktopPackageContents; bundle: PetPackageBundle; suggestedTargetKey?: string }>();
+  const [subscriptionUrl, setSubscriptionUrlState] = useState(() => localStorage.getItem(subscriptionUrlKey) ?? defaultSubscriptionUrl);
+  const [subscriptionPackages, setSubscriptionPackages] = useState<PublishedPackageSummary[]>([]);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [subscriptionError, setSubscriptionError] = useState<string>();
+  const [subscriptionMessage, setSubscriptionMessage] = useState<string>();
+  const [importingPublicationId, setImportingPublicationId] = useState<string>();
   const fileInput = useRef<HTMLInputElement>(null);
   const manifest = useMemo(() => bundle ? materializePackageManifest(bundle) : undefined, [bundle]);
 
@@ -249,6 +299,29 @@ export function useDesktopPetPackage() {
       : await listBrowserPackages();
     setInstalledPackages(packages);
     return packages;
+  }
+
+  function setSubscriptionUrl(value: string) {
+    setSubscriptionUrlState(value);
+  }
+
+  async function refreshSubscription() {
+    setSubscriptionLoading(true);
+    setSubscriptionError(undefined);
+    setSubscriptionMessage(undefined);
+    try {
+      const normalized = normalizeSubscriptionServerUrl(subscriptionUrl);
+      const packages = await listRemotePackages(normalized);
+      localStorage.setItem(subscriptionUrlKey, normalized);
+      setSubscriptionUrlState(normalized);
+      setSubscriptionPackages(packages);
+      if (packages.length === 0) setSubscriptionMessage("服务器已连接，但还没有发布宠物包。");
+    } catch (caught) {
+      setSubscriptionPackages([]);
+      setSubscriptionError(caught instanceof Error ? caught.message : "订阅服务器连接失败");
+    } finally {
+      setSubscriptionLoading(false);
+    }
   }
 
   async function acceptPackage(contents: DesktopPackageContents, persist: boolean, options?: PackageImportOptions) {
@@ -359,6 +432,23 @@ export function useDesktopPetPackage() {
     }
   }
 
+  async function importSubscriptionPackage(item: PublishedPackageSummary) {
+    setImportingPublicationId(item.publicationId);
+    setSubscriptionError(undefined);
+    setSubscriptionMessage(undefined);
+    try {
+      const contents = await downloadRemotePackage(subscriptionUrl, item.publicationId);
+      const sameName = sameNamePackageTarget(item.name, installedPackages);
+      await acceptPackage(contents, true, sameName ? { mode: "replace", targetKey: sameName.key } : { mode: "new" });
+      setSubscriptionMessage(`“${item.name}”已导入并设为当前宠物。`);
+      await window.petLordDesktop?.showPet();
+    } catch (caught) {
+      setSubscriptionError(caught instanceof Error ? caught.message : "订阅包导入失败");
+    } finally {
+      setImportingPublicationId(undefined);
+    }
+  }
+
   return {
     bundle,
     manifest,
@@ -375,5 +465,14 @@ export function useDesktopPetPackage() {
     onFileSelected,
     activateInstalledPackage,
     removeInstalledPackage,
+    subscriptionUrl,
+    setSubscriptionUrl,
+    subscriptionPackages,
+    subscriptionLoading,
+    subscriptionError,
+    subscriptionMessage,
+    importingPublicationId,
+    refreshSubscription,
+    importSubscriptionPackage,
   };
 }

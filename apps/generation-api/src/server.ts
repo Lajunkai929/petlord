@@ -25,6 +25,7 @@ import { SqliteStore, workspaceEntityTypes, type WorkspaceEntityType } from "./s
 import { normalizeAgentPayload } from "@petlord/agent-bridge";
 import { agentEventSchema, agentEventSourceSchema, type AgentEvent } from "@petlord/schema";
 import { createProviderSchema, GenerationProviderRegistry, updateProviderSchema } from "./providers/registry";
+import { PublishedPackageLibrary } from "./publishedPackageLibrary";
 
 const port = Number(process.env.PETLORD_API_PORT ?? 4312);
 const mediaDirectory = fileURLToPath(new URL("../../../runtime-data/generated/", import.meta.url));
@@ -33,8 +34,10 @@ const foregroundMaskerSource = fileURLToPath(new URL("../native/ForegroundMasker
 const foregroundMaskerBinary = join(nativeDirectory, "foreground-masker");
 const jobsFile = fileURLToPath(new URL("../../../runtime-data/generation-jobs.json", import.meta.url));
 const databaseFile = fileURLToPath(new URL("../../../runtime-data/petlord.sqlite", import.meta.url));
+const publishedPackagesDirectory = fileURLToPath(new URL("../../../runtime-data/published-packages/", import.meta.url));
 const sqliteStore = new SqliteStore(databaseFile);
 const providerRegistry = new GenerationProviderRegistry(sqliteStore);
+const publishedPackageLibrary = new PublishedPackageLibrary(publishedPackagesDirectory);
 const cachedMedia = new Map<string, string>();
 const runningJobs = new Set<string>();
 const maxConcurrentJobs = 2;
@@ -123,7 +126,6 @@ function writeJson(response: ServerResponse, status: number, payload: unknown) {
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
-    "Access-Control-Allow-Origin": "http://localhost:4310",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   });
@@ -505,6 +507,10 @@ async function serveMedia(request: IncomingMessage, response: ServerResponse, fi
 }
 
 async function readJson(request: IncomingMessage): Promise<unknown> {
+  return JSON.parse((await readBinary(request)).toString("utf8"));
+}
+
+async function readBinary(request: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
@@ -513,7 +519,17 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
     if (size > 224 * 1024 * 1024) throw new Error("Request body exceeds 224 MB.");
     chunks.push(buffer);
   }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  return Buffer.concat(chunks);
+}
+
+function allowedCorsOrigin(origin: string | undefined) {
+  if (!origin) return undefined;
+  try {
+    const parsed = new URL(origin);
+    return parsed.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname) ? origin : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function publicJob(job: StoredJob): PersistentGenerationJob {
@@ -777,6 +793,9 @@ function scheduleStoredJobs() {
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `localhost:${port}`}`);
+  const corsOrigin = allowedCorsOrigin(request.headers.origin);
+  if (corsOrigin) response.setHeader("Access-Control-Allow-Origin", corsOrigin);
+  response.setHeader("Vary", "Origin");
   if (request.method === "OPTIONS") return writeJson(response, 204, null);
 
   try {
@@ -887,6 +906,34 @@ const server = createServer(async (request, response) => {
           alphaCoverage: processed.coverage,
         },
       });
+    }
+
+    if (url.pathname === "/api/library/packages") {
+      if (request.method === "GET") return writeJson(response, 200, await publishedPackageLibrary.list());
+      if (request.method === "POST") {
+        const published = await publishedPackageLibrary.publish(await readBinary(request));
+        return writeJson(response, 201, published);
+      }
+    }
+
+    const packageDownloadMatch = url.pathname.match(/^\/api\/library\/packages\/([a-f0-9]{64})\/download$/);
+    if (request.method === "GET" && packageDownloadMatch) {
+      try {
+        const contents = await publishedPackageLibrary.read(packageDownloadMatch[1]);
+        response.writeHead(200, {
+          "Content-Type": "application/vnd.petlord.package+gzip",
+          "Content-Length": String(contents.byteLength),
+          "Content-Disposition": `attachment; filename="${packageDownloadMatch[1]}.petlord"`,
+          "Cache-Control": "public, max-age=31536000, immutable",
+        });
+        response.end(contents);
+        return;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          return writeJson(response, 404, { error: { message: "Published package not found." } });
+        }
+        throw error;
+      }
     }
 
     if (url.pathname === "/api/providers") {
@@ -1013,6 +1060,7 @@ const server = createServer(async (request, response) => {
 await loadJobs();
 scheduleStoredJobs();
 
-server.listen(port, "127.0.0.1", () => {
-  process.stdout.write(`PetLord generation API ready on http://127.0.0.1:${port}\n`);
+const host = process.env.PETLORD_API_HOST ?? "127.0.0.1";
+server.listen(port, host, () => {
+  process.stdout.write(`PetLord generation API ready on http://${host}:${port}\n`);
 });

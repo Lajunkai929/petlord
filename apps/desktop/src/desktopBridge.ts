@@ -1,5 +1,5 @@
 import type { Root } from "react-dom/client";
-import type { AgentEvent, AgentEventSource, PluginPermission } from "@petlord/schema";
+import type { AgentEvent, AgentEventSource, PluginPermission, PublishedPackageSummary } from "@petlord/schema";
 import type { RuntimeDisplaySize, RuntimeFrameRate, RuntimePixelGridSize, RuntimeRenderResolution } from "@petlord/runtime-react";
 
 export interface DesktopRuntimeSettings {
@@ -51,6 +51,8 @@ export interface PetLordDesktopBridge {
   listPackages(): Promise<InstalledPackageSummary[]>;
   activatePackage(key: string): Promise<DesktopPackageContents>;
   removePackage(key: string): Promise<InstalledPackageSummary[]>;
+  listSubscriptionPackages(serverUrl: string): Promise<PublishedPackageSummary[]>;
+  downloadSubscriptionPackage(serverUrl: string, publicationId: string): Promise<DesktopPackageContents>;
   exportDiagnostics(): Promise<string | null>;
   reportError(input: { message: string; stack?: string; source?: string }): Promise<void>;
   listAgentEvents(input?: { source?: AgentEventSource; unreadOnly?: boolean; limit?: number }): Promise<AgentEvent[]>;

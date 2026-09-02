@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CharacterProject, CustomerOrder } from "@petlord/schema";
+import type { CharacterProject, CustomerOrder, PublishedPackageSummary } from "@petlord/schema";
 import { buildPetPackage } from "@petlord/state-engine";
 import { createPortablePetBundle, encodePortablePetBundle } from "../lib/portablePetPackage";
 
@@ -18,6 +18,9 @@ export function usePublishPackage(project: CharacterProject, onUpdateOrder?: (or
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState({ completed: 0, total: 0 });
   const [exportError, setExportError] = useState<string>();
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string>();
+  const [published, setPublished] = useState<PublishedPackageSummary>();
   const [downloadUrl, setDownloadUrl] = useState<string>();
   const { manifest, error } = useMemo(() => resolvePackage(project), [project]);
   const pendingCount = useMemo(
@@ -31,14 +34,20 @@ export function usePublishPackage(project: CharacterProject, onUpdateOrder?: (or
     if (downloadUrl) URL.revokeObjectURL(downloadUrl);
   }, [downloadUrl]);
 
+  const buildEncodedPackage = useCallback(async () => {
+    if (!manifest) throw new Error("宠物包尚未准备完成。");
+    setExportProgress({ completed: 0, total: 0 });
+    const bundle = await createPortablePetBundle(manifest, (completed, total) => setExportProgress({ completed, total }));
+    return encodePortablePetBundle(bundle);
+  }, [manifest]);
+
   const downloadPackage = useCallback(async () => {
     if (!manifest || exporting || !canExport) return;
     setExporting(true);
     setExportError(undefined);
     setExportProgress({ completed: 0, total: 0 });
     try {
-      const bundle = await createPortablePetBundle(manifest, (completed, total) => setExportProgress({ completed, total }));
-      const encoded = await encodePortablePetBundle(bundle);
+      const encoded = await buildEncodedPackage();
       const blob = new Blob([encoded], { type: "application/vnd.petlord.package+gzip" });
       const url = URL.createObjectURL(blob);
       setDownloadUrl((current) => {
@@ -59,7 +68,31 @@ export function usePublishPackage(project: CharacterProject, onUpdateOrder?: (or
     } finally {
       setExporting(false);
     }
-  }, [canExport, exporting, manifest, onUpdateOrder, project.characterName, project.order.deliveryChecklist]);
+  }, [buildEncodedPackage, canExport, exporting, manifest, onUpdateOrder, project.characterName, project.order.deliveryChecklist]);
+
+  const publishToLibrary = useCallback(async () => {
+    if (!manifest || publishing || !canExport) return;
+    setPublishing(true);
+    setPublishError(undefined);
+    try {
+      const encoded = await buildEncodedPackage();
+      const response = await fetch("/api/library/packages", {
+        method: "POST",
+        headers: { "Content-Type": "application/vnd.petlord.package+gzip" },
+        body: Uint8Array.from(encoded),
+      });
+      const payload = await response.json() as PublishedPackageSummary & { error?: { message?: string } };
+      if (!response.ok) throw new Error(payload.error?.message ?? "发布到客户端订阅失败。");
+      setPublished(payload);
+      onUpdateOrder?.({
+        deliveryChecklist: { ...project.order.deliveryChecklist, packageExportedAt: new Date().toISOString() },
+      });
+    } catch (caught) {
+      setPublishError(caught instanceof Error ? caught.message : "发布到客户端订阅失败");
+    } finally {
+      setPublishing(false);
+    }
+  }, [buildEncodedPackage, canExport, manifest, onUpdateOrder, project.order.deliveryChecklist, publishing]);
 
   return {
     manifest,
@@ -67,9 +100,13 @@ export function usePublishPackage(project: CharacterProject, onUpdateOrder?: (or
     canExport,
     pendingCount,
     downloadPackage,
+    publishToLibrary,
     exporting,
+    publishing,
     exportProgress,
     exportError,
+    publishError,
+    published,
     downloadUrl,
     downloadFilename: `${project.characterName.toLowerCase()}-desktop-pet.petlord`,
   };

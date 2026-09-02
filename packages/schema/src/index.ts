@@ -667,6 +667,19 @@ export const petPackageBundleSchema = z.object({
   }
 });
 
+export const publishedPackageSummarySchema = z.object({
+  publicationId: z.string().regex(/^[a-f0-9]{64}$/),
+  packageId: z.string().min(1),
+  name: z.string().min(1),
+  characterName: z.string().min(1),
+  createdAt: z.string().datetime(),
+  publishedAt: z.string().datetime(),
+  stateCount: z.number().int().positive(),
+  transitionCount: z.number().int().nonnegative(),
+  sizeBytes: z.number().int().positive().max(224 * 1024 * 1024),
+  downloadPath: z.string().regex(/^\/api\/library\/packages\/[a-f0-9]{64}\/download$/),
+});
+
 export type Artifact = z.infer<typeof artifactSchema>;
 export type LogicalState = z.infer<typeof logicalStateSchema>;
 export type StateVariant = z.infer<typeof stateVariantSchema>;
@@ -697,6 +710,7 @@ export type CharacterProject = z.infer<typeof characterProjectSchema>;
 export type IdentityProfile = z.infer<typeof identityProfileSchema>;
 export type PetPackageManifest = z.infer<typeof petPackageManifestSchema>;
 export type PetPackageBundle = z.infer<typeof petPackageBundleSchema>;
+export type PublishedPackageSummary = z.infer<typeof publishedPackageSummarySchema>;
 export type RuntimeState = z.infer<typeof runtimeStateSchema>;
 export type RuntimeTransition = z.infer<typeof runtimeTransitionSchema>;
 export type PluginDeclaration = z.infer<typeof pluginDeclarationSchema>;

@@ -1,6 +1,8 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import {
+  ArrowClockwise,
   Check,
+  CloudArrowDown,
   Dog,
   DownloadSimple,
   Eye,
@@ -8,6 +10,7 @@ import {
   Play,
   Plug,
   PushPin,
+  SpinnerGap,
   SpeakerSimpleSlash,
   Trash,
   X,
@@ -46,6 +49,10 @@ function initialImage(manifest: DesktopSettingsWindowController["petPackages"]["
   return manifest?.states.find((state) => state.id === manifest.initialStateId)?.imageUri ?? manifest?.states[0]?.imageUri;
 }
 
+function packageSize(bytes: number) {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
 function Toggle({ checked, label, detail, icon: Icon, onChange }: { checked: boolean; label: string; detail: string; icon: typeof Eye; onChange: (checked: boolean) => void }) {
   return <label className="settings-toggle"><Icon size={19} weight="duotone" /><span><strong>{label}</strong><small>{detail}</small></span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><i /></label>;
 }
@@ -59,8 +66,18 @@ function PetPackages({ controller }: { controller: DesktopSettingsWindowControll
   const preview = initialImage(petPackages.manifest);
   if (petPackages.loading && !petPackages.manifest) return <section className="settings-view settings-pets-view"><header><div><h1>我的宠物</h1><p>正在读取本机配置。</p></div></header><div className="settings-pet-skeleton"><i /><span><b /><b /><b /></span></div></section>;
   return <section className="settings-view settings-pets-view">
-    <header><div><h1>我的宠物</h1><p>切换方案，或导入创作平台发布的配置。</p></div><button className="settings-primary-action" type="button" onClick={petPackages.choosePackage}><DownloadSimple size={17} />导入配置</button></header>
+    <header><div><h1>我的宠物</h1><p>浏览创作服务器的发布订阅，或导入本地配置。</p></div><button className="settings-secondary-action" type="button" onClick={petPackages.choosePackage}><DownloadSimple size={17} />导入文件</button></header>
     {petPackages.manifest ? <div className="active-pet-strip"><div className="active-pet-preview">{preview && <img src={preview} alt={`${petPackages.manifest.characterName} 预览`} />}</div><div><span>正在使用</span><h2>{petPackages.manifest.characterName}</h2><p>{petPackages.manifest.states.length} 个状态，{petPackages.manifest.transitions.length} 段动画</p></div><button type="button" onClick={() => { void controller.showPet(); }}><Play size={15} weight="fill" />看看它</button></div> : <div className="settings-empty-pet"><Dog size={54} weight="duotone" /><h2>先带一只宠物回家</h2><p>导入一个 .petlord 配置后，宠物会出现在桌面。</p><button type="button" onClick={petPackages.choosePackage}><DownloadSimple size={16} />选择配置</button></div>}
+    <div className="subscription-browser">
+      <div className="subscription-heading"><span><CloudArrowDown size={19} weight="duotone" /></span><div><h2>订阅浏览</h2><p>连接 PetLord 创作服务器，点击一次即可导入并使用。</p></div></div>
+      <form onSubmit={(event) => { event.preventDefault(); void petPackages.refreshSubscription(); }}>
+        <label><span>服务器地址</span><input type="url" required value={petPackages.subscriptionUrl} onChange={(event) => petPackages.setSubscriptionUrl(event.target.value)} placeholder="http://127.0.0.1:4312" /></label>
+        <button type="submit" disabled={petPackages.subscriptionLoading}>{petPackages.subscriptionLoading ? <SpinnerGap className="spin" size={15} /> : <ArrowClockwise size={15} />}刷新订阅</button>
+      </form>
+      {petPackages.subscriptionError && <p className="subscription-feedback is-error">{petPackages.subscriptionError}</p>}
+      {petPackages.subscriptionMessage && <p className="subscription-feedback is-success">{petPackages.subscriptionMessage}</p>}
+      {petPackages.subscriptionPackages.length > 0 && <div className="subscription-package-list">{petPackages.subscriptionPackages.map((item) => <article key={item.publicationId}><i>{item.characterName.slice(0, 1)}</i><span><strong>{item.name}</strong><small>{item.characterName} · {item.stateCount} 个状态 · {item.transitionCount} 段动画 · {packageSize(item.sizeBytes)}</small><time>{new Date(item.publishedAt).toLocaleString("zh-CN")}</time></span><button type="button" disabled={Boolean(petPackages.importingPublicationId)} onClick={() => { void petPackages.importSubscriptionPackage(item); }}>{petPackages.importingPublicationId === item.publicationId ? <SpinnerGap className="spin" size={14} /> : <CloudArrowDown size={14} weight="bold" />}{petPackages.installedPackages.some((installed) => installed.name.trim().toLocaleLowerCase() === item.name.trim().toLocaleLowerCase()) ? "更新并使用" : "导入并使用"}</button></article>)}</div>}
+    </div>
     {petPackages.installedPackages.length > 0 && <div className="pet-scheme-list"><h2>配置方案</h2>{petPackages.installedPackages.map((item) => <article className={item.active ? "is-active" : ""} key={item.key}><button type="button" onClick={() => { if (!item.active) void petPackages.activateInstalledPackage(item.key); }}><i>{item.characterName.slice(0, 1)}</i><span><strong>{item.name}</strong><small>{item.stateCount} 个状态，{item.transitionCount} 段动画</small></span>{item.active && <em><Check size={13} weight="bold" />当前</em>}</button>{!item.active && <button className="pet-scheme-delete" type="button" aria-label={`删除 ${item.name}`} onClick={() => { void petPackages.removeInstalledPackage(item.key); }}><Trash size={15} /></button>}</article>)}</div>}
   </section>;
 }

@@ -48,3 +48,15 @@ npm run dev
 Open `http://localhost:4310`, then choose **Models & Providers** in the graph toolbar. Add image and video Providers independently; credentials stay in the local `runtime-data/petlord.sqlite` database and are never returned by the settings API. Multiple Providers of each kind can be saved and selected per project.
 
 Run `npm run check` before submitting a change. It performs type checking, tests, and production builds for every workspace.
+
+## Publish to the Desktop Client
+
+The normal handoff no longer requires exporting and re-importing a file:
+
+1. In Studio, open **Publish** and choose **Publish to client subscription**.
+2. Open the Desktop Client settings and refresh the default subscription at `http://127.0.0.1:4312`.
+3. Choose **Import and use**. A package with the same name is updated in place; a new name creates another local configuration.
+
+Published versions are immutable, content-addressed `.petlord` files under `runtime-data/published-packages/`. The Desktop Client verifies the package again before installing it. Manual `.petlord` download and import remain available as an offline fallback.
+
+For a remote subscription server, enter its HTTPS origin in the Desktop Client. If you expose the generation API beyond loopback with `PETLORD_API_HOST`, place it behind your own authenticated reverse proxy; the built-in library is designed to be local-first and does not provide public-server authentication.

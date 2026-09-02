@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld("petLordDesktop", {
   listPackages: () => ipcRenderer.invoke("runtime:list-packages"),
   activatePackage: (key) => ipcRenderer.invoke("runtime:activate-package", key),
   removePackage: (key) => ipcRenderer.invoke("runtime:remove-package", key),
+  listSubscriptionPackages: (serverUrl) => ipcRenderer.invoke("runtime:list-subscription-packages", serverUrl),
+  downloadSubscriptionPackage: (serverUrl, publicationId) => ipcRenderer.invoke("runtime:download-subscription-package", serverUrl, publicationId),
   exportDiagnostics: () => ipcRenderer.invoke("runtime:export-diagnostics"),
   reportError: (input) => ipcRenderer.invoke("runtime:report-error", input),
   listAgentEvents: (input) => ipcRenderer.invoke("runtime:list-agent-events", input),

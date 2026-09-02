@@ -294,7 +294,7 @@ function PreviewLoading() {
 }
 
 function PublishWorkspace({ project, onUpdateOrder }: { project: CharacterProject; onUpdateOrder: (order: Partial<CustomerOrder>) => void }) {
-  const { manifest, error, pendingCount, canExport, downloadPackage, exporting, exportProgress, exportError, downloadUrl, downloadFilename } = usePublishPackage(project, onUpdateOrder);
+  const { manifest, error, pendingCount, canExport, downloadPackage, publishToLibrary, exporting, publishing, exportProgress, exportError, publishError, published, downloadUrl, downloadFilename } = usePublishPackage(project, onUpdateOrder);
   return (
     <main className="page-workspace publish-workspace">
       <header className="page-heading"><span>发布</span><h1>把实际展示变体交给独立运行时。</h1><p>宠物包只包含批准的视频、选定展示帧、触发条件和语义映射。</p></header>
@@ -302,7 +302,11 @@ function PublishWorkspace({ project, onUpdateOrder }: { project: CharacterProjec
         <section className="package-summary">
           <div className="package-icon"><Package size={36} weight="duotone" /></div><div><h2>{project.characterName}</h2><p>{project.name}</p></div>
           <dl><div><dt>实际状态</dt><dd>{manifest?.states.length ?? 0}</dd></div><div><dt>连续动画</dt><dd>{manifest?.transitions.length ?? 0}</dd></div><div><dt>触发条件</dt><dd>{manifest?.transitions.reduce((sum, transition) => sum + transition.triggers.length, 0) ?? 0}</dd></div></dl>
-          <button className="primary-button" type="button" disabled={!canExport || exporting} onClick={downloadPackage}>{exporting ? <SpinnerGap className="spin" size={18} /> : <DownloadSimple size={18} weight="bold" />}{exporting ? `正在打包媒体 ${exportProgress.completed}/${exportProgress.total}` : "导出宠物包"}</button>
+          <div className="package-publish-actions">
+            <button className="primary-button" type="button" disabled={!canExport || exporting || publishing} onClick={publishToLibrary}>{publishing ? <SpinnerGap className="spin" size={18} /> : <CloudCheck size={18} weight="fill" />}{publishing ? `正在发布 ${exportProgress.completed}/${exportProgress.total}` : "发布到客户端订阅"}</button>
+            <button className="secondary-button" type="button" disabled={!canExport || exporting || publishing} onClick={downloadPackage}>{exporting ? <SpinnerGap className="spin" size={18} /> : <DownloadSimple size={18} weight="bold" />}{exporting ? `正在打包 ${exportProgress.completed}/${exportProgress.total}` : "下载 .petlord"}</button>
+          </div>
+          {published && <p className="package-published-status"><CheckCircle size={14} weight="fill" />已发布“{published.name}”；客户端刷新订阅即可一键导入。</p>}
           {downloadUrl && <a className="package-download-fallback" href={downloadUrl} download={downloadFilename}><DownloadSimple size={14} />如果浏览器没有自动下载，点击这里</a>}
           <small className="package-export-note">V2 .petlord 包含媒体、完整性校验和运行配置，使用时无需连接生成服务。</small>
         </section>
@@ -315,6 +319,7 @@ function PublishWorkspace({ project, onUpdateOrder }: { project: CharacterProjec
           <div className="check-row is-ready"><DownloadSimple size={20} weight="fill" /><div><strong>压缩与损坏检测</strong><span>媒体按哈希去重并校验，桌面端拒绝被篡改或截断的包</span></div></div>
           {error && <p className="publish-error">{error}</p>}
           {exportError && <p className="publish-error">{exportError}</p>}
+          {publishError && <p className="publish-error">{publishError}</p>}
         </aside>
       </div>
     </main>
