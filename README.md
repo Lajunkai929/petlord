@@ -7,11 +7,9 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&amp;logo=typescript&amp;logoColor=white" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/React-20232A?style=flat-square&amp;logo=react&amp;logoColor=61DAFB" alt="React" />
-  <img src="https://img.shields.io/badge/Electron-191970?style=flat-square&amp;logo=electron&amp;logoColor=white" alt="Electron" />
-  <img src="https://img.shields.io/badge/SQLite-003B57?style=flat-square&amp;logo=sqlite&amp;logoColor=white" alt="SQLite" />
-  <img src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-333333?style=flat-square" alt="macOS, Windows and Linux" />
+  <img src="https://img.shields.io/badge/macOS-000000?style=flat-square&amp;logo=apple&amp;logoColor=white" alt="macOS" />
+  <img src="https://img.shields.io/badge/Windows-0078D4?style=flat-square&amp;logo=windows11&amp;logoColor=white" alt="Windows" />
+  <img src="https://img.shields.io/badge/Linux-FCC624?style=flat-square&amp;logo=linux&amp;logoColor=black" alt="Linux" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-97C83E?style=flat-square" alt="MIT License" /></a>
 </p>
 
@@ -26,9 +24,7 @@ PetLord provides two composable, reusable creation systems:
 
 The Creator and Desktop Client are separate: preview changes in real time to create and validate quickly, then run finished companions independently in the Desktop Client.
 
-[![PetLord product demo](assets/petlord-demo-cover.png)](assets/petlord-demo.mp4)
-
-**[▶ Watch the full demo (35 seconds)](assets/petlord-demo.mp4)**
+![PetLord product demo](assets/petlord-demo.gif)
 
 ![PetLord Desktop Client](assets/petlord-desktop.png)
 
