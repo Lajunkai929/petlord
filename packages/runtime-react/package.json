@@ -1,0 +1,14 @@
+{
+  "name": "@petlord/runtime-react",
+  "version": "0.1.0",
+  "description": "Shared React adapter for the PetLord runtime core",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@petlord/runtime-core": "*",
+    "@petlord/schema": "*",
+    "@petlord/state-engine": "*",
+    "react": "latest"
+  }
+}

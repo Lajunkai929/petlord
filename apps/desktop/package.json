@@ -1,0 +1,98 @@
+{
+  "name": "@petlord/desktop",
+  "version": "0.1.0",
+  "description": "Independent PetLord desktop-pet runtime",
+  "author": "PetLord contributors",
+  "license": "MIT",
+  "private": true,
+  "productName": "PetLord",
+  "desktopName": "petlord",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "electron": "electron electron/main.cjs",
+    "build": "tsc --noEmit && vite build && node --check electron/main.cjs && node --check electron/preload.cjs",
+    "dist:dir": "npm run build && electron-builder --dir --publish never",
+    "dist:mac": "npm run build && electron-builder --mac dmg --arm64 --publish never",
+    "dist:mac:arm64": "npm run dist:mac",
+    "dist:mac:universal": "npm run build && electron-builder --mac dmg --universal --publish never",
+    "dist:linux": "npm run dist:linux:x64",
+    "dist:linux:x64": "npm run build && electron-builder --linux AppImage deb --x64 --publish never",
+    "dist:win": "npm run dist:win:x64",
+    "dist:win:x64": "npm run build && electron-builder --win nsis --x64 --publish never"
+  },
+  "dependencies": {
+    "@petlord/plugin-agent-activity": "*",
+    "@petlord/plugin-sdk": "*",
+    "@petlord/plugin-todo": "*",
+    "@petlord/runtime-core": "*",
+    "@petlord/runtime-react": "*",
+    "@petlord/schema": "*",
+    "@petlord/state-engine": "*",
+    "@phosphor-icons/react": "latest",
+    "@radix-ui/react-dialog": "^1.1.23",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "electron": "44.0.0",
+    "electron-builder": "^26.15.3",
+    "vite": "latest"
+  },
+  "build": {
+    "appId": "com.petlord.desktop",
+    "productName": "PetLord",
+    "artifactName": "PetLord-${version}-${arch}.${ext}",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "identity": "-",
+      "hardenedRuntime": true,
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "dmg": {
+      "title": "PetLord ${version}"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Utility",
+      "executableName": "petlord",
+      "maintainer": "PetLord contributors",
+      "syncDesktopName": true,
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "artifactName": "PetLord-${version}-linux-${arch}.${ext}"
+    },
+    "win": {
+      "icon": "build/icon.png",
+      "target": "nsis",
+      "artifactName": "PetLord-Setup-${version}-windows-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

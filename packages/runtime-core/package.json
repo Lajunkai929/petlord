@@ -1,0 +1,13 @@
+{
+  "name": "@petlord/runtime-core",
+  "version": "0.1.0",
+  "description": "Framework-independent PetLord runtime state machine",
+  "private": true,
+  "type": "module",
+  "files": ["src/index.ts", "README.md"],
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@petlord/schema": "*",
+    "@petlord/state-engine": "*"
+  }
+}

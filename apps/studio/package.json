@@ -1,0 +1,30 @@
+{
+  "name": "@petlord/studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@petlord/generation": "*",
+    "@petlord/runtime-react": "*",
+    "@petlord/schema": "*",
+    "@petlord/state-engine": "*",
+    "@phosphor-icons/react": "latest",
+    "@radix-ui/react-dialog": "latest",
+    "@xyflow/react": "latest",
+    "antd": "^6.6.2",
+    "react": "latest",
+    "react-dom": "latest",
+    "sonner": "^2.0.8"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest"
+  }
+}

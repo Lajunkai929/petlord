@@ -1,0 +1,35 @@
+{
+  "name": "petlord",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Create, animate, and run state-driven AI desktop pets — locally.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "plugins/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n api,studio -c yellow,green \"npm run dev --workspace @petlord/generation-api\" \"npm run dev --workspace @petlord/studio\"",
+    "dev:desktop": "concurrently -k -n renderer,electron -c cyan,magenta \"npm run dev --workspace @petlord/desktop\" \"node scripts/start-desktop-dev.mjs\"",
+    "dist:desktop:mac": "npm run dist:mac --workspace @petlord/desktop",
+    "dist:desktop:mac:arm64": "npm run dist:mac --workspace @petlord/desktop -- --arm64",
+    "dist:desktop:mac:x64": "npm run dist:mac --workspace @petlord/desktop -- --x64",
+    "dist:desktop:linux": "npm run dist:linux:x64 --workspace @petlord/desktop",
+    "dist:desktop:win": "npm run dist:win:x64 --workspace @petlord/desktop",
+    "build:lottery-package": "node --import tsx scripts/build-lottery-package.ts",
+    "build:lottery-hires-package": "node --import tsx scripts/build-lottery-hires-package.ts",
+    "build": "npm run build --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p apps/studio/tsconfig.json && tsc --noEmit -p apps/desktop/tsconfig.json && tsc --noEmit -p apps/generation-api/tsconfig.json",
+    "check": "npm run typecheck && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "concurrently": "latest",
+    "typescript": "latest",
+    "vitest": "latest"
+  }
+}

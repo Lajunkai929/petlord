@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+.DS_Store
+node_modules/
+dist/
+.vite/
+coverage/
+runtime-data/
+apps/desktop/release/
+*.tsbuildinfo
+.python-packages/
+__pycache__/
+*.pyc

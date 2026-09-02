@@ -1,0 +1,48 @@
+{
+  "format": "petlord-package",
+  "bundleVersion": 1,
+  "createdAt": "2026-08-31T00:00:00.000Z",
+  "manifest": {
+    "manifestVersion": 1,
+    "id": "sample-lottery-v2",
+    "name": "Lottery 示例宠物 V2",
+    "characterName": "Lottery V2",
+    "initialStateId": "variant-sitting-v2",
+    "states": [
+      {
+        "id": "variant-sitting-v2",
+        "logicalStateId": "state-sitting",
+        "label": "坐着 V2",
+        "imageUri": "/demo/pip/state-sitting.png",
+        "origin": "initial"
+      }
+    ],
+    "transitions": [],
+    "logicalStates": [
+      {
+        "id": "state-sitting",
+        "label": "坐着",
+        "variantIds": ["variant-sitting-v2"],
+        "idleScheduler": {
+          "enabled": false,
+          "strategy": "weighted-random",
+          "minIntervalMs": 8000,
+          "maxIntervalMs": 18000,
+          "avoidImmediateRepeat": true
+        }
+      }
+    ],
+    "semanticActions": {
+      "idle": "state-sitting"
+    },
+    "plugins": [
+      {
+        "id": "petlord.todo",
+        "name": "To Do",
+        "version": "0.1.0",
+        "entry": "index.js",
+        "permissions": ["pet:read", "pet:control", "storage", "ui:panel", "notifications"]
+      }
+    ]
+  }
+}
