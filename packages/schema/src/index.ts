@@ -48,10 +48,18 @@ export const defaultPointerGazeDirectionKeyframesMs: [number, number, number, nu
   600, 1200, 1800, 2400, 3000, 3600, 4200, 4800,
 ];
 
+export const defaultPointerGazeAnchor = { x: 0.5, y: 0.5 };
+
+const pointerGazeAnchorSchema = z.object({
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+});
+
 export const pointerGazeSchema = z.object({
   enabled: z.boolean(),
   motionTarget: z.enum(["eyes", "head"]),
   activationRadius: z.number().min(0.6).max(3).default(1.4),
+  anchor: pointerGazeAnchorSchema.default(defaultPointerGazeAnchor),
   videoArtifactId: z.string().min(1).optional(),
   videoArtifactIds: z.array(z.string().min(1)).default([]),
   durationMs: z.number().int().positive().optional(),
@@ -78,6 +86,7 @@ export const runtimePointerGazeSchema = z.object({
   enabled: z.boolean(),
   motionTarget: z.enum(["eyes", "head"]),
   activationRadius: z.number().min(0.6).max(3),
+  anchor: pointerGazeAnchorSchema.default(defaultPointerGazeAnchor),
   videoUri: z.string().min(1).optional(),
   durationMs: z.number().int().positive().optional(),
   segmentStartMs: z.number().int().nonnegative().default(0),

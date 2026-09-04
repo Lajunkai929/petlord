@@ -31,6 +31,15 @@ describe("pointer gaze mapping", () => {
     expect(pointIsWithinPointerGazeRange({ x: 1.6, y: 0.5 }, 1.4)).toBe(true);
     expect(pointIsWithinPointerGazeRange({ x: 2.1, y: 0.5 }, 1.4)).toBe(false);
   });
+
+  it("measures close pointer direction and range from the configured head anchor", () => {
+    const headAnchor = { x: 0.72, y: 0.3 };
+    expect(pointerGazeProgress({ x: 0.22, y: 0.3 }, 0.5, headAnchor)).toBeCloseTo(0);
+    expect(pointerGazeProgress({ x: 0.72, y: 0.1 }, 0.5, headAnchor)).toBeCloseTo(0.25);
+    expect(pointerGazeProgress({ x: 0.74, y: 0.31 }, 0.72, headAnchor)).toBe(0.72);
+    expect(pointIsWithinPointerGazeRange({ x: 1.8, y: 0.3 }, 1.4, headAnchor)).toBe(true);
+    expect(pointIsWithinPointerGazeRange({ x: 2.2, y: 0.3 }, 1.4, headAnchor)).toBe(false);
+  });
 });
 
 function runtimeManifest(): PetPackageManifest {

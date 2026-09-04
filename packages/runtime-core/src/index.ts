@@ -79,15 +79,15 @@ export interface RuntimeActionResult {
   reason?: string;
 }
 
-export function pointIsWithinPointerGazeRange(point: NormalizedPoint, activationRadius: number) {
-  const dx = point.x - 0.5;
-  const dy = point.y - 0.5;
+export function pointIsWithinPointerGazeRange(point: NormalizedPoint, activationRadius: number, anchor: NormalizedPoint = { x: 0.5, y: 0.5 }) {
+  const dx = point.x - anchor.x;
+  const dy = point.y - anchor.y;
   return Math.hypot(dx, dy) <= activationRadius;
 }
 
-export function pointerGazeProgress(point: NormalizedPoint, previousProgress = 0.5) {
-  const dx = point.x - 0.5;
-  const dy = point.y - 0.5;
+export function pointerGazeProgress(point: NormalizedPoint, previousProgress = 0.5, anchor: NormalizedPoint = { x: 0.5, y: 0.5 }) {
+  const dx = point.x - anchor.x;
+  const dy = point.y - anchor.y;
   if (Math.hypot(dx, dy) < 0.08) return previousProgress;
   const clockwiseFromLeft = (Math.atan2(dy, dx) + Math.PI) / (Math.PI * 2);
   return (clockwiseFromLeft + 1) % 1;

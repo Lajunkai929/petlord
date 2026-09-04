@@ -166,12 +166,12 @@ export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
     if (!core) return;
     const gaze = currentLogicalState?.pointerGaze;
     const timestamp = Date.now();
-    if (gaze?.enabled && gaze.videoUri && pointIsWithinPointerGazeRange(point, gaze.activationRadius)) {
+    if (gaze?.enabled && gaze.videoUri && pointIsWithinPointerGazeRange(point, gaze.activationRadius, gaze.anchor)) {
       const activation = pointerGazeState.active
         ? { accepted: true }
         : core.beginPath([], "pointer", timestamp, "注视鼠标");
       if (activation.accepted) {
-        setPointerGazeState((current) => ({ active: true, progress: pointerGazeProgress(point, current.progress) }));
+        setPointerGazeState((current) => ({ active: true, progress: pointerGazeProgress(point, current.progress, gaze.anchor) }));
       }
     } else {
       setPointerGazeState((current) => current.active ? { ...current, active: false } : current);

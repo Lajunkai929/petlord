@@ -1,6 +1,7 @@
 import {
   ArrowCounterClockwise,
   CheckCircle,
+  Crosshair,
   CursorClick,
   Desktop,
   Eye,
@@ -148,6 +149,10 @@ function PreviewBody({ preview, onEdit }: { preview: RuntimePreviewController; o
                   }}
                 ><small>{triggerLabel(trigger)}</small></span>
               ))) }
+            {preview.showHotspots && !preview.activeTransition && preview.pointerGaze?.enabled && <span
+              className="runtime-gaze-anchor"
+              style={{ left: `${preview.pointerGaze.anchor.x * 100}%`, top: `${preview.pointerGaze.anchor.y * 100}%` }}
+            ><Crosshair size={18} weight="bold" /><small>注视中心</small></span>}
             <span className="runtime-state-chip">{preview.activeTransition ? `播放过渡 · ${preview.activePlaybackCycles} 轮 · ${preview.frameRate} FPS` : `${preview.currentState?.label} · ${preview.pixelated ? `${preview.pixelGridSize} 格像素` : "高清"} · ${preview.displaySize}px`}</span>
           </div>
         </div>

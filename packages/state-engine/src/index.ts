@@ -166,6 +166,7 @@ export function buildPetPackage(projectInput: CharacterProject): PetPackageManif
           enabled: state.pointerGaze.enabled,
           motionTarget: state.pointerGaze.motionTarget,
           activationRadius: state.pointerGaze.activationRadius,
+          anchor: state.pointerGaze.anchor,
           videoUri: gazeVideo?.uri,
           durationMs: state.pointerGaze.durationMs,
           segmentStartMs: state.pointerGaze.segmentStartMs,

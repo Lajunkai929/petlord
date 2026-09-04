@@ -1,4 +1,4 @@
-import type { CharacterProject, LogicalState, StateVariant, Transition, TransitionTrigger } from "@petlord/schema";
+import { defaultPointerGazeAnchor, type CharacterProject, type LogicalState, type StateVariant, type Transition, type TransitionTrigger } from "@petlord/schema";
 import { CHARACTER_NAME_PROMPT_VARIABLE, materializePromptVariables, templateCharacterNamePrompt } from "@petlord/generation";
 
 export const projectStateBlueprints = [
@@ -134,6 +134,7 @@ function mediaFreePointerGaze(pointerGaze: LogicalState["pointerGaze"]): Logical
   delete sanitized.durationMs;
   delete sanitized.segmentEndMs;
   sanitized.videoArtifactIds = [];
+  sanitized.anchor = { ...defaultPointerGazeAnchor };
   return sanitized;
 }
 export type ProjectTemplateDefinition = BuiltinProjectTemplate | SavedProjectTemplate;

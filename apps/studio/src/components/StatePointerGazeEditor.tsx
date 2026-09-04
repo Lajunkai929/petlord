@@ -1,6 +1,6 @@
-import { Eye, Play, Smiley, SpinnerGap } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
-import { defaultPointerGazeDirectionKeyframesMs, type Artifact, type PointerGaze } from "@petlord/schema";
+import { Crosshair, Eye, Play, Smiley, SpinnerGap } from "@phosphor-icons/react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { defaultPointerGazeAnchor, defaultPointerGazeDirectionKeyframesMs, type Artifact, type PointerGaze } from "@petlord/schema";
 import type { CostEstimate, PersistentGenerationJob } from "@petlord/generation";
 import { Segmented, Switch, Tooltip } from "antd";
 
@@ -8,6 +8,7 @@ export const defaultPointerGaze: PointerGaze = {
   enabled: false,
   motionTarget: "eyes",
   activationRadius: 1.4,
+  anchor: { ...defaultPointerGazeAnchor },
   videoArtifactIds: [],
   segmentStartMs: 0,
   directionKeyframesMs: [...defaultPointerGazeDirectionKeyframesMs],
@@ -28,6 +29,7 @@ const gazeDirections = [
 export function StatePointerGazeEditor({
   value,
   videos,
+  sourceImage,
   activeJob,
   estimate,
   busy,
@@ -37,6 +39,7 @@ export function StatePointerGazeEditor({
 }: {
   value?: PointerGaze;
   videos: Artifact[];
+  sourceImage?: string;
   activeJob?: PersistentGenerationJob;
   estimate: CostEstimate | null;
   busy: boolean;
@@ -83,6 +86,24 @@ export function StatePointerGazeEditor({
       video.currentTime = reset[selectedDirection] / 1000;
     }
   }
+
+  function selectGazeAnchor(event: PointerEvent<HTMLButtonElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const anchor = {
+      x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / Math.max(1, bounds.width))),
+      y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / Math.max(1, bounds.height))),
+    };
+    onChange({ ...gaze, anchor });
+  }
+
+  const gazeAnchor = gaze.anchor ?? defaultPointerGazeAnchor;
+  function updateGazeAnchor(axis: "x" | "y", percentage: number) {
+    if (!Number.isFinite(percentage)) return;
+    onChange({
+      ...gaze,
+      anchor: { ...gazeAnchor, [axis]: Math.max(0, Math.min(1, percentage / 100)) },
+    });
+  }
   return (
     <section className={`pointer-gaze-editor ${gaze.enabled ? "is-enabled" : ""}`}>
       <header>
@@ -106,6 +127,28 @@ export function StatePointerGazeEditor({
               { value: "head", label: <span><Smiley size={14} />转动头部</span> },
             ]}
           />
+          <section className="pointer-gaze-editor__anchor-editor">
+            <header>
+              <span><strong>注视中心</strong><small>在权威图上点击头部中心</small></span>
+              <button type="button" onClick={() => onChange({ ...gaze, anchor: { ...defaultPointerGazeAnchor } })}>画布中心</button>
+            </header>
+            <button
+              className="pointer-gaze-editor__anchor-canvas checkerboard"
+              type="button"
+              aria-label="在状态图上选择注视中心"
+              title="点击角色头部中心；鼠标方向与响应距离都从这里计算"
+              onPointerDown={selectGazeAnchor}
+            >
+              {sourceImage ? <img src={sourceImage} alt="" draggable={false} /> : <small>先生成或选择状态权威图</small>}
+              <span className="pointer-gaze-editor__anchor" style={{ left: `${gazeAnchor.x * 100}%`, top: `${gazeAnchor.y * 100}%` }}>
+                <Crosshair size={18} weight="bold" /><em>中心</em>
+              </span>
+            </button>
+            <div className="pointer-gaze-editor__anchor-coordinates">
+              <label><span>水平 X</span><input aria-label="注视中心水平 X" type="number" min={0} max={100} step={0.5} value={(gazeAnchor.x * 100).toFixed(1)} onChange={(event) => updateGazeAnchor("x", Number(event.target.value))} /><em>%</em></label>
+              <label><span>垂直 Y</span><input aria-label="注视中心垂直 Y" type="number" min={0} max={100} step={0.5} value={(gazeAnchor.y * 100).toFixed(1)} onChange={(event) => updateGazeAnchor("y", Number(event.target.value))} /><em>%</em></label>
+            </div>
+          </section>
           <label className="pointer-gaze-editor__range"><span>响应范围</span><select value={gaze.activationRadius} onChange={(event) => onChange({ ...gaze, activationRadius: Number(event.target.value) })}><option value={1}>贴近宠物</option><option value={1.4}>附近</option><option value={1.8}>较远</option><option value={2.4}>大范围</option></select></label>
           {activeVideo && <video
             ref={videoRef}

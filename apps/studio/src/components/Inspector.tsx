@@ -466,6 +466,7 @@ export function Inspector(props: InspectorProps) {
         {state && <StatePointerGazeEditor
           value={state.pointerGaze}
           videos={gazeVideos}
+          sourceImage={stateDisplayImage}
           activeJob={activeGazeJob}
           estimate={gazeCostEstimate}
           busy={props.busy}

@@ -143,6 +143,7 @@ export function reconcilePersistentJobs(
             enabled: true,
             motionTarget: "eyes" as const,
             activationRadius: 1.4,
+            anchor: { x: 0.5, y: 0.5 },
             videoArtifactIds: [],
             segmentStartMs: 0,
             directionKeyframesMs: [600, 1200, 1800, 2400, 3000, 3600, 4200, 4800] as [number, number, number, number, number, number, number, number],
