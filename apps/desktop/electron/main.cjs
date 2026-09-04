@@ -43,6 +43,9 @@ const petLordDataDirectory = resolvePetLordDataDirectory();
 if (process.env.PETLORD_USER_DATA_DIR) {
   app.setPath("userData", petLordDataDirectory);
 }
+const singleInstanceLock = app.requestSingleInstanceLock();
+if (!singleInstanceLock) app.quit();
+else app.on("second-instance", () => showSettings());
 
 function userDataPath(filename) {
   return path.join(petLordDataDirectory, filename);
@@ -890,6 +893,7 @@ function updateTrayMenu() {
       : [{ label: "还没有宠物配置", enabled: false }];
     tray.setContextMenu(Menu.buildFromTemplate([
       { label: "打开设置", click: () => showSettings() },
+      { label: "显示宠物", click: () => mainWindow?.showInactive() },
       { label: "导入配置", click: () => showSettings(true) },
       { type: "separator" },
       { label: "宠物配置", submenu: packageItems },
@@ -950,7 +954,11 @@ async function reportRuntimeError(input) {
 }
 
 app.whenReady().then(async () => {
-  if (process.platform === "darwin") app.dock?.setIcon(path.join(__dirname, "../build/icon.png"));
+  if (!singleInstanceLock) return;
+  if (process.platform === "darwin") {
+    await app.dock?.show();
+    app.dock?.setIcon(path.join(__dirname, "../build/icon.png"));
+  }
   try {
     const migrated = await preparePetLordDataDirectory(petLordDataDirectory, process.env.PETLORD_USER_DATA_DIR ? undefined : legacyUserDataDirectory);
     if (migrated.length > 0) console.info(`Migrated PetLord data to ${petLordDataDirectory}: ${migrated.join(", ")}`);
@@ -1001,7 +1009,6 @@ app.whenReady().then(async () => {
   createPetWindow(hasPackage);
   createSettingsWindow(!hasPackage || process.env.PETLORD_SHOW_SETTINGS === "1");
   createTray();
-  app.dock?.hide();
   globalShortcut.register("CommandOrControl+Shift+P", () => {
     void saveSettings({ clickThrough: !runtimeSettings.clickThrough });
   });
