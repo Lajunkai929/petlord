@@ -70,11 +70,16 @@ export function createMediaBridgeProfile(source: MediaVisualStats | undefined, t
   }
   const widthRatio = source.visibleWidth / Math.max(0.01, target.visibleWidth);
   const heightRatio = source.visibleHeight / Math.max(0.01, target.visibleHeight);
-  const targetInitialScale = clamp(Math.sqrt(widthRatio * heightRatio), 0.8, 1.24);
+  // Generated motion can drift much farther than a normal camera wobble. A
+  // narrow 0.8–1.24 clamp left obviously oversized tail frames to collapse
+  // into a much smaller authority image during the last few milliseconds.
+  // Stable dissolve is an explicit opt-in, so it is safe to correct the full
+  // geometry mismatch here instead of preserving that visible jump.
+  const targetInitialScale = clamp(Math.sqrt(widthRatio * heightRatio), 0.6, 1.75);
   const scaledTargetCenterX = 0.5 + (target.centerX - 0.5) * targetInitialScale;
   const scaledTargetCenterY = 0.5 + (target.centerY - 0.5) * targetInitialScale;
-  const targetInitialOffsetX = clamp(source.centerX - scaledTargetCenterX, -0.14, 0.14);
-  const targetInitialOffsetY = clamp(source.centerY - scaledTargetCenterY, -0.14, 0.14);
+  const targetInitialOffsetX = clamp(source.centerX - scaledTargetCenterX, -0.24, 0.24);
+  const targetInitialOffsetY = clamp(source.centerY - scaledTargetCenterY, -0.24, 0.24);
   const sizeMismatch = Math.max(Math.abs(Math.log(widthRatio)), Math.abs(Math.log(heightRatio)));
   const positionMismatch = Math.hypot(source.centerX - target.centerX, source.centerY - target.centerY);
   return {

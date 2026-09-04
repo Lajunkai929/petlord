@@ -7,6 +7,10 @@ describe("companion interaction recipe", () => {
   it("creates the complete interactive graph from authority states", () => {
     const project = applyCompanionInteractionRecipe({ ...lotteryPixelProject, transitions: [] });
     expect(project.transitions).toHaveLength(13);
+    expect(project.transitions.find((transition) => transition.id.endsWith("rest-belly"))?.triggers[0]).toMatchObject({
+      event: "double-click",
+      region: { shape: "ellipse", x: 0.04, y: 0.04, width: 0.92, height: 0.92 },
+    });
     expect(project.transitions.find((transition) => transition.id.endsWith("belly-wiggle"))?.triggers[0]).toMatchObject({ event: "hover", repeatWhileHovered: true });
     expect(project.transitions.find((transition) => transition.id.endsWith("sleep-wake"))).toMatchObject({ durationSeconds: 5 });
     expect(project.transitions.find((transition) => transition.id.endsWith("rest-sleep"))?.triggers[0]).toMatchObject({ event: "inactivity", timerDurationMs: 30_000 });
@@ -17,6 +21,11 @@ describe("companion interaction recipe", () => {
       minIntervalMs: 10_000,
       maxIntervalMs: 30_000,
       avoidImmediateRepeat: false,
+    });
+    expect(project.logicalStates.find((state) => state.semanticKey === "play")?.idleScheduler).toMatchObject({
+      enabled: true,
+      playbackMode: "continuous",
+      strategy: "weighted-random",
     });
     expect(project.transitions.find((transition) => transition.id.endsWith("sleep-breathe"))?.idleRule).toMatchObject({ weight: 50, cooldownMs: 0 });
     expect(project.transitions.find((transition) => transition.id.endsWith("sleep-dream"))?.idleRule).toMatchObject({ weight: 1, cooldownMs: 30_000 });

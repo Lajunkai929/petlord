@@ -54,6 +54,8 @@ export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
   const clickTimerRef = useRef<number | null>(null);
   const lastInteractionSyncAtRef = useRef(0);
   const [pointerGazeState, setPointerGazeState] = useState({ active: false, progress: 0.5 });
+  const [pointerGazeBlend, setPointerGazeBlend] = useState(0);
+  const pointerGazeBlendRef = useRef(0);
   const [dragActive, setDragActive] = useState(false);
   const [dragReturnPending, setDragReturnPending] = useState(false);
   const dragOriginStateIdRef = useRef<string | undefined>(undefined);
@@ -78,7 +80,7 @@ export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
     const active = core.activeTransition();
     const stateDisplayLoop = active && active.fromStateId === snapshot.currentStateId && active.toStateId === snapshot.currentStateId;
     const dueTimes = (snapshot.phase === "idle"
-      ? [snapshot.nextTimedTrigger?.dueAt, pointerGazeState.active ? undefined : snapshot.nextIdleDueAt, snapshot.nextHoverTrigger?.dueAt]
+      ? [snapshot.nextTimedTrigger?.dueAt, pointerGazeState.active || pointerGazeBlend > 0 ? undefined : snapshot.nextIdleDueAt, snapshot.nextHoverTrigger?.dueAt]
       : stateDisplayLoop
         ? [snapshot.nextTimedTrigger?.dueAt, snapshot.nextHoverTrigger?.dueAt]
         : [snapshot.nextHoverTrigger?.dueAt])
@@ -87,7 +89,7 @@ export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
     const dueAt = Math.min(...dueTimes);
     const timer = window.setTimeout(() => core.fireDueSchedules(Date.now()), Math.max(20, dueAt - Date.now()));
     return () => window.clearTimeout(timer);
-  }, [core, pointerGazeState.active, snapshot.nextHoverTrigger?.dueAt, snapshot.nextIdleDueAt, snapshot.nextTimedTrigger?.dueAt, snapshot.phase]);
+  }, [core, pointerGazeBlend, pointerGazeState.active, snapshot.nextHoverTrigger?.dueAt, snapshot.nextIdleDueAt, snapshot.nextTimedTrigger?.dueAt, snapshot.phase]);
 
   useEffect(() => {
     if (!core || snapshot.phase !== "bridge") return;
@@ -107,7 +109,35 @@ export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
   useEffect(() => {
     lastInteractionSyncAtRef.current = 0;
     clearPendingClick();
+    setPointerGazeState((current) => current.active ? { ...current, active: false } : current);
+    pointerGazeBlendRef.current = 0;
+    setPointerGazeBlend(0);
   }, [clearPendingClick, core]);
+
+  useEffect(() => {
+    const target = pointerGazeState.active ? 1 : 0;
+    const durationMs = currentLogicalState?.pointerGaze?.blendDurationMs ?? 240;
+    if (durationMs <= 0) {
+      pointerGazeBlendRef.current = target;
+      setPointerGazeBlend(target);
+      return;
+    }
+    const initial = pointerGazeBlendRef.current;
+    if (Math.abs(initial - target) < 0.001) return;
+    const startedAt = performance.now();
+    let frame = 0;
+    const animate = (timestamp: number) => {
+      const elapsed = timestamp - startedAt;
+      const progress = Math.min(1, elapsed / durationMs);
+      const eased = progress * progress * (3 - 2 * progress);
+      const value = initial + (target - initial) * eased;
+      pointerGazeBlendRef.current = value;
+      setPointerGazeBlend(value);
+      if (progress < 1) frame = window.requestAnimationFrame(animate);
+    };
+    frame = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(frame);
+  }, [currentLogicalState?.pointerGaze?.blendDurationMs, pointerGazeState.active]);
 
   useEffect(() => {
     if (snapshot.activeTransitionId) {
@@ -117,6 +147,8 @@ export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
 
   useEffect(() => {
     setPointerGazeState((current) => current.active ? { ...current, active: false } : current);
+    pointerGazeBlendRef.current = 0;
+    setPointerGazeBlend(0);
   }, [snapshot.currentStateId]);
 
   useEffect(() => {
@@ -227,8 +259,9 @@ export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
     currentLogicalState,
     idleScheduler: currentLogicalState?.idleScheduler,
     pointerGaze: currentLogicalState?.pointerGaze,
-    pointerGazeActive: pointerGazeState.active,
+    pointerGazeActive: pointerGazeState.active || pointerGazeBlend > 0.001,
     pointerGazeProgress: pointerGazeState.progress,
+    pointerGazeBlendProgress: pointerGazeBlend,
     interruptPointerGaze: () => setPointerGazeState((current) => current.active ? { ...current, active: false } : current),
     idleTransitions,
     dragInteraction: manifest?.dragInteraction,

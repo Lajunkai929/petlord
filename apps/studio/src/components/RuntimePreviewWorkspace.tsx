@@ -128,6 +128,7 @@ function PreviewBody({ preview, onEdit }: { preview: RuntimePreviewController; o
               pointerGaze={preview.pointerGaze}
               pointerGazeActive={preview.pointerGazeActive}
               pointerGazeProgress={preview.pointerGazeProgress}
+              pointerGazeBlendProgress={preview.pointerGazeBlendProgress}
               muted
               className="runtime-pet-canvas"
               onVideoTimeUpdate={preview.onVideoTimeUpdate}
@@ -185,7 +186,7 @@ function RuntimeInspector({ preview, onEdit }: { preview: RuntimePreviewControll
       </section>
       {preview.pointerGaze?.enabled && (
         <section className="runtime-inspector-section runtime-gaze-preview">
-          <div className="runtime-section-label"><span>注视鼠标</span><b>素材待制作</b></div>
+          <div className="runtime-section-label"><span>注视鼠标</span><b>{preview.pointerGaze.videoUri ? "已绑定可交互素材" : "素材待制作"}</b></div>
           <div className="runtime-gaze-summary"><Eye size={16} weight="fill" /><strong>{preview.pointerGaze.motionTarget === "eyes" ? "只动眼睛" : "转动头部"}</strong></div>
         </section>
       )}

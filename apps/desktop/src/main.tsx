@@ -44,6 +44,7 @@ function PetSurface() {
           pointerGaze={runtime.pointerGaze}
           pointerGazeActive={runtime.pointerGazeActive}
           pointerGazeProgress={runtime.pointerGazeProgress}
+          pointerGazeBlendProgress={runtime.pointerGazeBlendProgress}
           muted={runtime.settings.settings.muted}
           className="pet-media"
           onVideoTimeUpdate={runtime.onTransitionVideoTimeUpdate}

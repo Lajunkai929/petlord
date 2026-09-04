@@ -1,12 +1,29 @@
 import { describe, expect, it } from "vitest";
 import type { PetPackageManifest } from "@petlord/schema";
-import { PetRuntimeCore, pointIsWithinPointerGazeRange, pointerGazeProgress } from "./index";
+import { PetRuntimeCore, pointIsWithinPointerGazeRange, pointerGazeProgress, pointerGazeTimeMs } from "./index";
 
 describe("pointer gaze mapping", () => {
   it("maps a circular pointer direction to a stable scrub position", () => {
+    expect(pointerGazeProgress({ x: -0.5, y: 0.5 })).toBeCloseTo(0);
     expect(pointerGazeProgress({ x: 0.5, y: -0.5 })).toBeCloseTo(0.25);
     expect(pointerGazeProgress({ x: 1.5, y: 0.5 })).toBeCloseTo(0.5);
     expect(pointerGazeProgress({ x: 0.5, y: 1.5 })).toBeCloseTo(0.75);
+  });
+
+  it("uses eight calibrated direction frames instead of assuming uniform video timing", () => {
+    const gaze = {
+      durationMs: 6000,
+      segmentStartMs: 0,
+      segmentEndMs: 6000,
+      directionKeyframesMs: [500, 1100, 1750, 2350, 3050, 3650, 4300, 4925] as [number, number, number, number, number, number, number, number],
+    };
+    expect(pointerGazeTimeMs(gaze, 0)).toBe(500);
+    expect(pointerGazeTimeMs(gaze, 0.25)).toBe(1750);
+    expect(pointerGazeTimeMs(gaze, 0.5)).toBe(3050);
+    expect(pointerGazeTimeMs(gaze, 0.75)).toBe(4300);
+    expect(pointerGazeTimeMs(gaze, 0.125 + 0.0625)).toBeCloseTo(1425);
+    expect(pointerGazeTimeMs(gaze, 0.9375)).toBeCloseTo(5712.5);
+    expect(pointerGazeTimeMs(gaze, 0.99)).toBeCloseTo(374);
   });
 
   it("keeps the previous gaze frame while the pointer is stationary near the center", () => {

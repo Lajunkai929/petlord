@@ -44,6 +44,10 @@ export const idleSchedulerSchema = z.object({
   }
 });
 
+export const defaultPointerGazeDirectionKeyframesMs: [number, number, number, number, number, number, number, number] = [
+  600, 1200, 1800, 2400, 3000, 3600, 4200, 4800,
+];
+
 export const pointerGazeSchema = z.object({
   enabled: z.boolean(),
   motionTarget: z.enum(["eyes", "head"]),
@@ -53,6 +57,17 @@ export const pointerGazeSchema = z.object({
   durationMs: z.number().int().positive().optional(),
   segmentStartMs: z.number().int().nonnegative().default(0),
   segmentEndMs: z.number().int().positive().optional(),
+  directionKeyframesMs: z.tuple([
+    z.number().int().nonnegative(),
+    z.number().int().nonnegative(),
+    z.number().int().nonnegative(),
+    z.number().int().nonnegative(),
+    z.number().int().nonnegative(),
+    z.number().int().nonnegative(),
+    z.number().int().nonnegative(),
+    z.number().int().nonnegative(),
+  ]).default(defaultPointerGazeDirectionKeyframesMs),
+  blendDurationMs: z.number().int().min(0).max(1000).default(240),
 }).superRefine((gaze, context) => {
   if (gaze.segmentEndMs !== undefined && gaze.segmentEndMs <= gaze.segmentStartMs) {
     context.addIssue({ code: "custom", path: ["segmentEndMs"], message: "Gaze segment end must be after its start." });
@@ -67,6 +82,17 @@ export const runtimePointerGazeSchema = z.object({
   durationMs: z.number().int().positive().optional(),
   segmentStartMs: z.number().int().nonnegative().default(0),
   segmentEndMs: z.number().int().positive().optional(),
+  directionKeyframesMs: z.tuple([
+    z.number().int().nonnegative(),
+    z.number().int().nonnegative(),
+    z.number().int().nonnegative(),
+    z.number().int().nonnegative(),
+    z.number().int().nonnegative(),
+    z.number().int().nonnegative(),
+    z.number().int().nonnegative(),
+    z.number().int().nonnegative(),
+  ]).default(defaultPointerGazeDirectionKeyframesMs),
+  blendDurationMs: z.number().int().min(0).max(1000).default(240),
 });
 
 export const dragInteractionSchema = z.object({

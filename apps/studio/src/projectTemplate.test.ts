@@ -33,11 +33,12 @@ describe("customer project templates", () => {
     expect(project.initialVariantId).toBeUndefined();
     expect(project.order).toMatchObject({ customerName: "小林", quotedPriceCny: 799, status: "assets" });
     expect(project.logicalStates.filter((state) => state.idleScheduler.enabled).every((state) =>
-      state.idleScheduler.playbackMode === "interval" &&
+      state.idleScheduler.playbackMode === (state.semanticKey === "play" ? "continuous" : "interval") &&
       state.idleScheduler.minIntervalMs === 10_000 &&
       state.idleScheduler.maxIntervalMs === 30_000)).toBe(true);
     expect(project.transitions.find((transition) => transition.id === "template-sleep-breathe")?.idleRule?.weight).toBe(50);
     expect(project.transitions.find((transition) => transition.id === "template-sleep-dream")?.idleRule?.weight).toBe(1);
+    expect(project.transitions.find((transition) => transition.id === "template-rest-belly")?.triggers[0]?.region).toEqual({ shape: "ellipse", x: 0.04, y: 0.04, width: 0.92, height: 0.92 });
   });
 
   it("creates a truly blank project or a complete fixed interaction graph", () => {
@@ -74,7 +75,7 @@ describe("customer project templates", () => {
 
   it("saves a finished project as a media-free reusable template", () => {
     const source = createBlankProject({ ...input, projectTemplateId: "companion" });
-    source.logicalStates[0] = { ...source.logicalStates[0], pointerGaze: { enabled: true, motionTarget: "head", activationRadius: 1.4, videoArtifactIds: [], segmentStartMs: 0 } };
+    source.logicalStates[0] = { ...source.logicalStates[0], pointerGaze: { enabled: true, motionTarget: "head", activationRadius: 1.4, videoArtifactId: "private-gaze-video", videoArtifactIds: ["private-gaze-video"], durationMs: 6_000, segmentStartMs: 0, segmentEndMs: 6_000, directionKeyframesMs: [600, 1200, 1800, 2400, 3000, 3600, 4200, 4800], blendDurationMs: 240 } };
     source.plugins = [{ id: "petlord.todo", name: "To Do", version: "0.1.0", entry: "plugins/todo/index.js", permissions: ["pet:read"] }];
     source.artifacts.push({ id: "private-media", kind: "state-draft", uri: "/private/dog.png", mimeType: "image/png", createdAt: "2026-09-01T00:00:00.000Z" });
     const template = saveProjectAsTemplate(source, "陪伴工作流", "复用当前交互图");
@@ -82,7 +83,8 @@ describe("customer project templates", () => {
     expect(template.transitions).toHaveLength(13);
     expect(template.transitions[0].promptTemplate).toContain("{{characterName}}");
     expect(template.transitions[0].promptTemplate).not.toContain("奶盖");
-    expect(template.states[0].pointerGaze).toEqual({ enabled: true, motionTarget: "head", activationRadius: 1.4, videoArtifactIds: [], segmentStartMs: 0 });
+    expect(template.states[0].pointerGaze).toEqual({ enabled: true, motionTarget: "head", activationRadius: 1.4, videoArtifactIds: [], segmentStartMs: 0, directionKeyframesMs: [600, 1200, 1800, 2400, 3000, 3600, 4200, 4800], blendDurationMs: 240 });
+    expect(JSON.stringify(template)).not.toContain("private-gaze-video");
     expect(JSON.stringify(template)).not.toContain("/private/dog.png");
 
     const reused = createBlankProject({ ...input, characterName: "团子", projectName: "团子的新项目", projectTemplateId: template.id, projectTemplate: template });
@@ -93,7 +95,7 @@ describe("customer project templates", () => {
     expect(reused.transitions.every((transition) => transition.status === "draft")).toBe(true);
     expect(reused.artifacts).toHaveLength(0);
     expect(reused.plugins).toEqual(template.plugins);
-    expect(reused.logicalStates[0].pointerGaze).toEqual({ enabled: true, motionTarget: "head", activationRadius: 1.4, videoArtifactIds: [], segmentStartMs: 0 });
+    expect(reused.logicalStates[0].pointerGaze).toEqual({ enabled: true, motionTarget: "head", activationRadius: 1.4, videoArtifactIds: [], segmentStartMs: 0, directionKeyframesMs: [600, 1200, 1800, 2400, 3000, 3600, 4200, 4800], blendDurationMs: 240 });
     expect(reused.order.serviceTemplateId).toBe(template.id);
   });
 

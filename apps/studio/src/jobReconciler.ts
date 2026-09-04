@@ -145,6 +145,8 @@ export function reconcilePersistentJobs(
             activationRadius: 1.4,
             videoArtifactIds: [],
             segmentStartMs: 0,
+            directionKeyframesMs: [600, 1200, 1800, 2400, 3000, 3600, 4200, 4800] as [number, number, number, number, number, number, number, number],
+            blendDurationMs: 240,
           };
           return {
             ...state,

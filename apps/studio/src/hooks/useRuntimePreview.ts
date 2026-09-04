@@ -182,6 +182,7 @@ export function useRuntimePreview(project: CharacterProject) {
     pointerGaze: runtime.pointerGaze ?? null,
     pointerGazeActive: runtime.pointerGazeActive,
     pointerGazeProgress: runtime.pointerGazeProgress,
+    pointerGazeBlendProgress: runtime.pointerGazeBlendProgress,
     dragInteraction: runtime.dragInteraction,
     dragActive: runtime.dragActive,
     nextIdleDueAt: runtime.snapshot.nextIdleDueAt,

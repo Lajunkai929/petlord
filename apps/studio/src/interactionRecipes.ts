@@ -11,7 +11,7 @@ export function applyCompanionInteractionRecipe(project: CharacterProject) {
           idleScheduler: {
             ...state.idleScheduler,
             enabled: true,
-            playbackMode: "interval" as const,
+            playbackMode: state.semanticKey === "play" ? "continuous" as const : "interval" as const,
             minIntervalMs: 10_000,
             maxIntervalMs: 30_000,
             avoidImmediateRepeat: state.semanticKey !== "sleep",

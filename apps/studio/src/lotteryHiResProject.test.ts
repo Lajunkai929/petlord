@@ -20,7 +20,7 @@ describe("Lottery high-resolution master sample", () => {
     expect(project.logicalStates
       .filter((state) => ["idle", "rest", "sleep", "play"].includes(state.semanticKey ?? ""))
       .every((state) => state.idleScheduler.enabled &&
-        state.idleScheduler.playbackMode === "interval" &&
+        state.idleScheduler.playbackMode === (state.semanticKey === "play" ? "continuous" : "interval") &&
         state.idleScheduler.minIntervalMs === 10_000 &&
         state.idleScheduler.maxIntervalMs === 30_000)).toBe(true);
     expect(project.transitions.filter((transition) => transition.idleRule)).toHaveLength(5);

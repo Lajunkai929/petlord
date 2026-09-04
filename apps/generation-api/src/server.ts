@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createReadStream } from "node:fs";
 import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { extname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -28,16 +28,27 @@ import { createProviderSchema, GenerationProviderRegistry, updateProviderSchema 
 import { PublishedPackageLibrary } from "./publishedPackageLibrary";
 
 const port = Number(process.env.PETLORD_API_PORT ?? 4312);
-const mediaDirectory = fileURLToPath(new URL("../../../runtime-data/generated/", import.meta.url));
-const nativeDirectory = fileURLToPath(new URL("../../../runtime-data/native/", import.meta.url));
+const defaultRuntimeDataDirectory = fileURLToPath(new URL("../../../runtime-data/", import.meta.url));
+const runtimeDataDirectory = process.env.PETLORD_RUNTIME_DATA_DIR
+  ? resolve(process.env.PETLORD_RUNTIME_DATA_DIR)
+  : defaultRuntimeDataDirectory;
+const mediaDirectory = join(runtimeDataDirectory, "generated");
+const nativeDirectory = join(runtimeDataDirectory, "native");
 const foregroundMaskerSource = fileURLToPath(new URL("../native/ForegroundMasker.swift", import.meta.url));
 const foregroundMaskerBinary = join(nativeDirectory, "foreground-masker");
-const jobsFile = fileURLToPath(new URL("../../../runtime-data/generation-jobs.json", import.meta.url));
-const databaseFile = fileURLToPath(new URL("../../../runtime-data/petlord.sqlite", import.meta.url));
-const publishedPackagesDirectory = fileURLToPath(new URL("../../../runtime-data/published-packages/", import.meta.url));
+const jobsFile = join(runtimeDataDirectory, "generation-jobs.json");
+const databaseFile = join(runtimeDataDirectory, "petlord.sqlite");
+const publishedPackagesDirectory = join(runtimeDataDirectory, "published-packages");
 const sqliteStore = new SqliteStore(databaseFile);
 const providerRegistry = new GenerationProviderRegistry(sqliteStore);
 const publishedPackageLibrary = new PublishedPackageLibrary(publishedPackagesDirectory);
+
+const legacyArkApiKey = process.env.ARK_API_KEY?.trim();
+if (legacyArkApiKey && providerRegistry.snapshot().providers.length === 0) {
+  const baseUrl = (process.env.ARK_BASE_URL?.trim() || "https://ark.cn-beijing.volces.com/api/v3").replace(/\/+$/, "");
+  providerRegistry.create({ type: "volcengine-ark", capability: "image", name: "Volcengine Ark · 图片", apiKey: legacyArkApiKey, baseUrl, enabled: true });
+  providerRegistry.create({ type: "volcengine-ark", capability: "video", name: "Volcengine Ark · 视频", apiKey: legacyArkApiKey, baseUrl, enabled: true });
+}
 const cachedMedia = new Map<string, string>();
 const runningJobs = new Set<string>();
 const maxConcurrentJobs = 2;

@@ -86,7 +86,7 @@ describe("bundled Lottery clear real project migration", () => {
     const migrated = refreshBundledProject(stored);
     expect(migrated.logicalStates.find((state) => state.semanticKey === "idle")?.idleScheduler).toMatchObject({ minIntervalMs: 15_000, maxIntervalMs: 60_000 });
     expect(migrated.logicalStates.filter((state) => state.semanticKey !== "idle" && state.idleScheduler.enabled).every((state) =>
-      state.idleScheduler.playbackMode === "interval" &&
+      state.idleScheduler.playbackMode === (state.semanticKey === "play" ? "continuous" : "interval") &&
       state.idleScheduler.minIntervalMs === 10_000 &&
       state.idleScheduler.maxIntervalMs === 30_000)).toBe(true);
     expect(migrated.transitions.find((transition) => transition.id === "template-sit-rest")?.triggers.find((trigger) => trigger.event === "inactivity")?.timerDurationMs).toBe(30_000);
@@ -128,7 +128,7 @@ describe("bundled high-resolution project migration", () => {
     const migrated = refreshBundledProject(project);
     expect(migrated.variants).toHaveLength(5);
     expect(migrated.logicalStates.filter((state) => state.idleScheduler.enabled)
-      .every((state) => state.idleScheduler.playbackMode === "interval" &&
+      .every((state) => state.idleScheduler.playbackMode === (state.semanticKey === "play" ? "continuous" : "interval") &&
         state.idleScheduler.minIntervalMs === 10_000 &&
         state.idleScheduler.maxIntervalMs === 30_000)).toBe(true);
     expect(migrated.transitions.filter((transition) => transition.idleRule)

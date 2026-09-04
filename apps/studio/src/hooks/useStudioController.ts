@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  defaultPointerGazeDirectionKeyframesMs,
   type Artifact,
   type AuthorityBridge,
   type CharacterProject,
@@ -463,8 +464,8 @@ export function useStudioController() {
       ? project.videoBackground.manualColor
       : project.videoBackground.autoColor;
     const motionPrompt = gaze.motionTarget === "eyes"
-      ? `${CHARACTER_NAME_PROMPT_VARIABLE} 保持“${state.label}”的身体姿态完全固定。头部必须像冻结的单张照片一样逐像素锁定：两只耳朵、头顶轮廓、眼周全部花纹、鼻子、口鼻、嘴角和下巴的位置、角度、大小从第一帧到最后一帧绝对不能变化。禁止转头、歪头、抬头、低头、伸脖子、缩脖子、动耳朵、眨眼或改变表情。唯一允许运动的是两只眼睛内部的瞳孔；瞳孔的颜色、尺寸和形状必须严格继承当前形象参考，并在眼眶范围内以自然的小幅度持续追踪屏幕周围目标，依次看向左、左上、上、右上、右、右下、下、左下，完成一圈后回到正前方。左右瞳孔方向始终一致，每只眼睛只保留一个与参考一致的稳定自然高光。`
-      : `${CHARACTER_NAME_PROMPT_VARIABLE} 保持“${state.label}”的身体、四肢和尾巴完全固定，只让眼睛与头部持续追踪屏幕周围的目标。头部以小幅、均匀、连续的动作依次转向左方、左上、正上、右上、右方、右下、正下、左下，完成一整圈后准确回到正前方。禁止身体旋转、位移、缩放或改变姿势。`;
+      ? `${CHARACTER_NAME_PROMPT_VARIABLE} 保持“${state.label}”的身体姿态完全固定。摄影机、角色包围盒、身体尺寸、位置和透明画布边距从第一帧到最后一帧完全不变。头部必须像冻结的单张照片一样逐像素锁定：两只耳朵、头顶轮廓、眼周全部花纹、鼻子、口鼻、嘴角和下巴的位置、角度、大小绝对不能变化。禁止转头、歪头、抬头、低头、伸脖子、缩脖子、动耳朵、眨眼或改变表情。唯一允许运动的是两只眼睛内部的瞳孔；左右瞳孔方向始终一致，每只眼睛只保留一个稳定自然高光。严格按 6 秒时间点生成：0.0–0.4 秒正前方静止；0.6 秒看左；1.2 秒看左上；1.8 秒看上；2.4 秒看右上；3.0 秒看右；3.6 秒看右下；4.2 秒看下；4.8 秒看左下；5.4–6.0 秒回到正前方并静止。`
+      : `${CHARACTER_NAME_PROMPT_VARIABLE} 保持“${state.label}”的身体、四肢和尾巴完全固定，只让眼睛与头部小幅追踪屏幕周围目标。摄影机、角色包围盒、身体尺寸、位置和透明画布边距从第一帧到最后一帧完全不变，禁止身体旋转、位移、缩放或改变姿势。严格按 6 秒时间点生成：0.0–0.4 秒正前方静止；0.6 秒看左；1.2 秒看左上；1.8 秒看上；2.4 秒看右上；3.0 秒看右；3.6 秒看右下；4.2 秒看下；4.8 秒看左下；5.4–6.0 秒准确回到正前方并静止。所有转动小幅、均匀、连续。`;
     const durationSeconds = 6;
     const estimate = estimateVideoGenerationCost({
       model: project.generationSettings.videoModel,
@@ -495,6 +496,16 @@ export function useStudioController() {
     setBusy(true);
     updateProject((current) => ({
       ...current,
+      logicalStates: current.logicalStates.map((candidate) => candidate.id === stateId && candidate.pointerGaze
+        ? {
+            ...candidate,
+            pointerGaze: {
+              ...candidate.pointerGaze,
+              directionKeyframesMs: candidate.pointerGaze.directionKeyframesMs ?? [...defaultPointerGazeDirectionKeyframesMs],
+              blendDurationMs: candidate.pointerGaze.blendDurationMs ?? 240,
+            },
+          }
+        : candidate),
       jobs: [{
         id: jobId,
         kind: "transition",

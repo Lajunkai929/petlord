@@ -1459,6 +1459,22 @@ button:active:not(:disabled) {
 .pointer-gaze-editor__segment { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .pointer-gaze-editor__segment label { display: flex; flex-direction: column; gap: 3px; color: var(--text-muted); font-size: calc(6px + var(--ui-font-adjust)); }
 .pointer-gaze-editor__segment input { width: 100%; padding: 0 7px; }
+.pointer-gaze-editor__calibration { display: flex; flex-direction: column; gap: 7px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.pointer-gaze-editor__calibration > header, .pointer-gaze-editor__calibration > header > span, .pointer-gaze-editor__calibration-action { display: flex; align-items: center; }
+.pointer-gaze-editor__calibration > header { justify-content: space-between; gap: 8px; }
+.pointer-gaze-editor__calibration > header > span { align-items: flex-start; flex-direction: column; gap: 2px; }
+.pointer-gaze-editor__calibration > header small, .pointer-gaze-editor__calibration-action span { color: var(--text-muted); font-size: calc(6px + var(--ui-font-adjust)); }
+.pointer-gaze-editor__calibration > header button, .pointer-gaze-editor__calibration-action button { min-height: 26px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-raised); color: var(--text-soft); font-size: calc(6px + var(--ui-font-adjust)); cursor: pointer; }
+.pointer-gaze-editor__direction-pad { align-self: center; display: grid; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(3, 42px); gap: 5px; }
+.pointer-gaze-editor__direction-pad > button { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 1px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-raised); color: var(--text-muted); cursor: pointer; }
+.pointer-gaze-editor__direction-pad > button b { color: var(--text-soft); font-size: 14px; line-height: 1; }
+.pointer-gaze-editor__direction-pad > button small { font-size: calc(5px + var(--ui-font-adjust)); font-variant-numeric: tabular-nums; }
+.pointer-gaze-editor__direction-pad > button.is-active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface-raised)); color: var(--accent); }
+.pointer-gaze-editor__direction-pad > button.is-active b { color: var(--accent); }
+.pointer-gaze-editor__direction-center { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 2px; grid-column: 2; grid-row: 2; border-radius: 50%; background: color-mix(in srgb, var(--accent) 10%, var(--surface-raised)); color: var(--accent); }
+.pointer-gaze-editor__direction-center small { font-size: calc(5px + var(--ui-font-adjust)); }
+.pointer-gaze-editor__calibration-action { justify-content: space-between; gap: 7px; }
+.pointer-gaze-editor__calibration-action button { padding: 0 8px; border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--accent); }
 .pointer-gaze-editor__submit, .pointer-gaze-editor__submit > span { display: flex; align-items: center; }
 .pointer-gaze-editor__submit { justify-content: space-between; gap: 8px; }
 .pointer-gaze-editor__submit > span { gap: 7px; }

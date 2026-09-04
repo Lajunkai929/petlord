@@ -61,7 +61,7 @@ describe("portable pet package", () => {
       ...manifest,
       logicalStates: [{
         ...manifest.logicalStates[0]!,
-        pointerGaze: { enabled: true, motionTarget: "head", activationRadius: 1.4, videoUri: "/gaze.webm", durationMs: 6000, segmentStartMs: 0, segmentEndMs: 6000 },
+        pointerGaze: { enabled: true, motionTarget: "head", activationRadius: 1.4, videoUri: "/gaze.webm", durationMs: 6000, segmentStartMs: 0, segmentEndMs: 6000, directionKeyframesMs: [600, 1200, 1800, 2400, 3000, 3600, 4200, 4800], blendDurationMs: 240 },
       }],
     };
     const image = "data:image/png;base64,AAAA";

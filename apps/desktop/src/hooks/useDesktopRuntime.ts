@@ -321,6 +321,7 @@ export function useDesktopRuntime() {
     pointerGaze: petRuntime.pointerGaze,
     pointerGazeActive: petRuntime.pointerGazeActive,
     pointerGazeProgress: petRuntime.pointerGazeProgress,
+    pointerGazeBlendProgress: petRuntime.pointerGazeBlendProgress,
     dragActive: petRuntime.dragActive,
     dragInteraction: petRuntime.dragInteraction,
     petSurfaceRef,

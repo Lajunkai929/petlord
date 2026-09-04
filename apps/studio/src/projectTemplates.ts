@@ -16,7 +16,6 @@ type StateKey = typeof projectStateBlueprints[number]["key"];
 
 const fullRegion = { shape: "ellipse" as const, x: 0.04, y: 0.04, width: 0.92, height: 0.92 };
 const headRegion = { shape: "ellipse" as const, x: 0.05, y: 0.02, width: 0.48, height: 0.5 };
-const bellyRegion = { shape: "ellipse" as const, x: 0.24, y: 0.3, width: 0.54, height: 0.48 };
 const tailRegion = { shape: "ellipse" as const, x: 0.69, y: 0.43, width: 0.28, height: 0.42 };
 
 function trigger(id: string, value: Omit<TransitionTrigger, "id">): TransitionTrigger {
@@ -84,7 +83,7 @@ export interface SavedProjectTemplate {
 const companionTransitions: TransitionBlueprint[] = [
   { id: "rest-sleep", label: "趴着 30 秒后睡觉", from: "rest", to: "sleep", prompt: (name) => `${name} 趴着逐渐犯困，眼皮缓慢合上，头轻轻落到前爪上，身体自然蜷缩进入熟睡。动作慵懒、连续、低幅度。`, triggers: [trigger("rest-sleep", { event: "inactivity", enabled: true, timerDurationMs: 30_000 })] },
   { id: "rest-ear", label: "趴着呼吸、动耳朵", from: "rest", to: "rest", prompt: (name) => `${name} 保持趴姿和身体稳定，胸腹持续轻微呼吸，两只耳朵先后轻轻抖动，眼睛短暂跟随用户，最后回到完全相同的趴姿。`, triggers: [trigger("head-click", { event: "left-click", enabled: true, region: headRegion })], idleRule: { enabled: true, weight: 5, cooldownMs: 0 }, endFrameSource: "source-frame" },
-  { id: "rest-belly", label: "双击肚皮翻身", from: "rest", to: "play", prompt: (name) => `${name} 开心地从趴姿向侧面翻滚，再平稳翻到背上露出柔软肚皮，四只爪自然抬起；四肢长度、粗细和毛发必须严格继承当前形象参考。`, triggers: [trigger("belly-double", { event: "double-click", enabled: true, region: bellyRegion })] },
+  { id: "rest-belly", label: "趴着时双击翻肚皮", from: "rest", to: "play", prompt: (name) => `${name} 开心地从趴姿向侧面翻滚，再平稳翻到背上露出柔软肚皮，四只爪自然抬起；四肢长度、粗细和毛发必须严格继承当前形象参考。`, triggers: [trigger("belly-double", { event: "double-click", enabled: true, region: fullRegion })] },
   { id: "rest-sit", label: "点击尾巴坐起来", from: "rest", to: "idle", prompt: (name) => `${name} 的尾巴被点击后轻轻摆动，前腿撑起身体，后腿收拢，稳稳坐起并看向用户。`, triggers: [trigger("tail-click", { event: "left-click", enabled: true, region: tailRegion })] },
   { id: "belly-wiggle", label: "翻肚皮持续呼吸、左右晃", from: "play", to: "play", prompt: (name) => `${name} 保持仰躺露肚皮，胸腹持续轻微呼吸，开心地左右轻轻晃动身体和四只爪，幅度小而有节奏，最后回到同一源帧；四肢长度、粗细和毛发必须严格继承当前形象参考。`, triggers: [trigger("belly-hover", { event: "hover", enabled: true, hoverDurationMs: 500, repeatWhileHovered: true, region: fullRegion })], idleRule: { enabled: true, weight: 5, cooldownMs: 0 }, endFrameSource: "source-frame" },
   { id: "belly-rest", label: "鼠标移开翻回趴着", from: "play", to: "rest", prompt: (name) => `${name} 察觉鼠标离开后停止晃动，从仰躺姿势向侧面翻身，四爪落地，平稳回到抬头趴着。`, triggers: [trigger("belly-leave", { event: "pointer-leave", enabled: true })] },
@@ -127,6 +126,16 @@ export const projectTemplates = [
 
 export type ProjectTemplateId = typeof projectTemplates[number]["id"];
 export type BuiltinProjectTemplate = typeof projectTemplates[number];
+
+function mediaFreePointerGaze(pointerGaze: LogicalState["pointerGaze"]): LogicalState["pointerGaze"] {
+  if (!pointerGaze) return undefined;
+  const sanitized = structuredClone(pointerGaze);
+  delete sanitized.videoArtifactId;
+  delete sanitized.durationMs;
+  delete sanitized.segmentEndMs;
+  sanitized.videoArtifactIds = [];
+  return sanitized;
+}
 export type ProjectTemplateDefinition = BuiltinProjectTemplate | SavedProjectTemplate;
 
 export function templateSourceVariantId(stateId: string) {
@@ -213,7 +222,7 @@ export function saveProjectAsTemplate(project: CharacterProject, name: string, d
       description: anonymizePrompt(state.description, project.characterName),
       position: structuredClone(state.position),
       idleScheduler: structuredClone(state.idleScheduler),
-      pointerGaze: state.pointerGaze ? structuredClone(state.pointerGaze) : undefined,
+      pointerGaze: mediaFreePointerGaze(state.pointerGaze),
     })),
     transitions,
     dragInteraction: project.dragInteraction ? structuredClone(project.dragInteraction) : undefined,
@@ -234,7 +243,7 @@ function logicalState(input: typeof projectStateBlueprints[number]): LogicalStat
     referenceArtifactIds: [],
     idleScheduler: {
       enabled: hasIdleAnimation,
-      playbackMode: "interval",
+      playbackMode: input.key === "play" ? "continuous" : "interval",
       strategy: "weighted-random",
       minIntervalMs: 10_000,
       maxIntervalMs: 30_000,
@@ -298,7 +307,7 @@ function createSavedTemplateGraph(template: SavedProjectTemplate, characterName:
     position: structuredClone(state.position),
     referenceArtifactIds: [],
     idleScheduler: structuredClone(state.idleScheduler),
-    pointerGaze: state.pointerGaze ? structuredClone(state.pointerGaze) : undefined,
+    pointerGaze: mediaFreePointerGaze(state.pointerGaze),
   }));
   const stateIds = new Set(logicalStates.map((state) => state.id));
   const transitions: Transition[] = template.transitions.flatMap((transition): Transition[] => {

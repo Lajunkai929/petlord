@@ -63,7 +63,14 @@ describe("pet package continuity", () => {
     const withGaze = structuredClone(manifest);
     withGaze.logicalStates[0].pointerGaze = { enabled: true, motionTarget: "head", activationRadius: 1.4, segmentStartMs: 0 };
     expect(petPackageManifestSchema.parse(withGaze).logicalStates[0]?.pointerGaze)
-      .toEqual({ enabled: true, motionTarget: "head", activationRadius: 1.4, segmentStartMs: 0 });
+      .toMatchObject({
+        enabled: true,
+        motionTarget: "head",
+        activationRadius: 1.4,
+        segmentStartMs: 0,
+        directionKeyframesMs: [600, 1200, 1800, 2400, 3000, 3600, 4200, 4800],
+        blendDurationMs: 240,
+      });
   });
 
   it("rejects a target still that differs from the extracted tail", () => {

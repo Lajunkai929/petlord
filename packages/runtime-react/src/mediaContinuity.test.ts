@@ -71,6 +71,15 @@ describe("media continuity correction", () => {
     expect(calculateBrightnessGain(bright, dark)).toBe(0.82);
   });
 
+  it("can align a strongly oversized video tail before the authority image settles", () => {
+    const oversizedTail = { ...sleepVideo, visibleWidth: 0.96, visibleHeight: 0.88, centerY: 0.62 };
+    const compactAuthority = { ...sleepImage, visibleWidth: 0.58, visibleHeight: 0.5, centerY: 0.54 };
+    const profile = createMediaBridgeProfile(oversizedTail, compactAuthority);
+    expect(profile.structuralMismatch).toBe(true);
+    expect(profile.targetInitialScale).toBeGreaterThan(1.5);
+    expect(Math.abs(profile.targetInitialOffsetY)).toBeGreaterThan(0.02);
+  });
+
   it("keeps one media layer effectively opaque throughout the overlap", () => {
     const samples = Array.from({ length: 21 }, (_, index) => overlappingMediaOpacities(index / 20));
     expect(samples[0]).toEqual({ sourceOpacity: 1, targetOpacity: 0 });

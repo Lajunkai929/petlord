@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { RuntimePointerGaze, RuntimeState, RuntimeTransition } from "@petlord/schema";
-import type { RuntimePhase } from "@petlord/runtime-core";
+import { pointerGazeTimeMs, type RuntimePhase } from "@petlord/runtime-core";
 import {
   calculateBrightnessGain,
   createMediaBridgeProfile,
@@ -30,6 +30,7 @@ export interface RuntimeMediaCanvasProps {
   pointerGaze?: RuntimePointerGaze | null;
   pointerGazeActive?: boolean;
   pointerGazeProgress?: number;
+  pointerGazeBlendProgress?: number;
   className?: string;
   onVideoTimeUpdate?: (elapsedMs: number) => void;
   onVideoEnded?: () => void;
@@ -151,6 +152,7 @@ export function RuntimeMediaCanvas({
   pointerGaze,
   pointerGazeActive = false,
   pointerGazeProgress = 0.5,
+  pointerGazeBlendProgress = 1,
   className,
   onVideoTimeUpdate,
   onVideoEnded,
@@ -168,6 +170,10 @@ export function RuntimeMediaCanvas({
   const interruptionFrameRef = useRef<HTMLCanvasElement | undefined>(undefined);
   const previousPlaybackRef = useRef({ transitionId: activeTransition?.id, runId: playbackRunId });
   const bridgeProfileRef = useRef<MediaBridgeProfile | undefined>(undefined);
+  const gazeAlignmentRef = useRef<MediaBridgeProfile | undefined>(undefined);
+  const gazeFrameReadyRef = useRef(false);
+  const gazeVisualBlendRef = useRef(0);
+  const gazeBlendFrameRef = useRef(0);
   const frameRateRef = useRef(frameRate);
   const timeUpdateCallbackRef = useRef(onVideoTimeUpdate);
   const endedCallbackRef = useRef(onVideoEnded);
@@ -290,11 +296,40 @@ export function RuntimeMediaCanvas({
 
   function drawPointerGazeFrame() {
     const video = gazeVideoRef.current;
-    if (!video || video.readyState < 2) return;
+    if (!video || video.readyState < 2 || video.seeking || !gazeFrameReadyRef.current) return;
     const drawing = context();
     if (!drawing) return;
-    drawContained(drawing, video, video.videoWidth, video.videoHeight, renderResolution);
+    const stateImage = stateImageRef.current;
+    if (!gazeAlignmentRef.current && stateImage) {
+      gazeAlignmentRef.current = createMediaBridgeProfile(
+        analyzeVisualSource(stateImage, stateImage.naturalWidth, stateImage.naturalHeight),
+        analyzeVisualSource(video, video.videoWidth, video.videoHeight),
+      );
+    }
+    const requestedBlend = Math.max(0, Math.min(1, pointerGazeBlendProgress));
+    const blendDelta = requestedBlend - gazeVisualBlendRef.current;
+    const visualBlend = Math.abs(blendDelta) <= 0.08
+      ? requestedBlend
+      : gazeVisualBlendRef.current + Math.sign(blendDelta) * 0.08;
+    gazeVisualBlendRef.current = visualBlend;
+    const opacity = overlappingMediaOpacities(visualBlend);
+    if (stateImage && opacity.sourceOpacity > 0) {
+      drawContainedStyled(drawing, stateImage, stateImage.naturalWidth, stateImage.naturalHeight, renderResolution, { opacity: opacity.sourceOpacity });
+    }
+    const alignment = gazeAlignmentRef.current;
+    drawContainedStyled(drawing, video, video.videoWidth, video.videoHeight, renderResolution, {
+      opacity: opacity.targetOpacity,
+      scale: alignment?.structuralMismatch ? alignment.targetInitialScale : 1,
+      offsetX: alignment?.structuralMismatch ? alignment.targetInitialOffsetX : 0,
+      offsetY: alignment?.structuralMismatch ? alignment.targetInitialOffsetY : 0,
+    });
     finalizeFrame(drawing);
+    if (Math.abs(requestedBlend - visualBlend) > 0.001 && !gazeBlendFrameRef.current) {
+      gazeBlendFrameRef.current = window.requestAnimationFrame(() => {
+        gazeBlendFrameRef.current = 0;
+        drawPointerGazeFrame();
+      });
+    }
   }
 
   function cachedImage(uri: string) {
@@ -347,6 +382,14 @@ export function RuntimeMediaCanvas({
     }).catch((caught) => playbackErrorCallbackRef.current?.(caught instanceof Error ? caught.message : "过渡结束帧加载失败"));
     return () => { cancelled = true; };
   }, [activeTransition?.id, activeTransition?.tailFrameUri]);
+
+  useEffect(() => {
+    gazeAlignmentRef.current = undefined;
+    gazeFrameReadyRef.current = false;
+    gazeVisualBlendRef.current = 0;
+    if (gazeBlendFrameRef.current) window.cancelAnimationFrame(gazeBlendFrameRef.current);
+    gazeBlendFrameRef.current = 0;
+  }, [currentState?.imageUri, pointerGaze?.videoUri]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -459,7 +502,10 @@ export function RuntimeMediaCanvas({
     if (!pointerGaze?.videoUri || !video || activeTransition || !pointerGazeActive) return;
     let cancelled = false;
     const draw = () => {
-      if (!cancelled) drawPointerGazeFrame();
+      if (!cancelled) {
+        gazeFrameReadyRef.current = true;
+        drawPointerGazeFrame();
+      }
     };
     const seek = async () => {
       if (video.readyState < 2) {
@@ -477,11 +523,12 @@ export function RuntimeMediaCanvas({
       if (cancelled) return;
       video.pause();
       const durationMs = pointerGaze.durationMs ?? Math.max(1, video.duration * 1000);
-      const startMs = Math.min(durationMs, pointerGaze.segmentStartMs ?? 0);
-      const endMs = Math.max(startMs + 1, Math.min(durationMs, pointerGaze.segmentEndMs ?? durationMs));
-      const targetSeconds = (startMs + Math.max(0, Math.min(1, pointerGazeProgress)) * (endMs - startMs)) / 1000;
+      const targetSeconds = pointerGazeTimeMs({ ...pointerGaze, durationMs }, pointerGazeProgress) / 1000;
       if (Math.abs(video.currentTime - targetSeconds) < 0.018) draw();
-      else video.currentTime = targetSeconds;
+      else {
+        gazeFrameReadyRef.current = false;
+        video.currentTime = targetSeconds;
+      }
     };
     video.addEventListener("seeked", draw);
     void seek().catch((caught) => playbackErrorCallbackRef.current?.(caught instanceof Error ? caught.message : "注视媒体准备失败"));
@@ -489,7 +536,7 @@ export function RuntimeMediaCanvas({
       cancelled = true;
       video.removeEventListener("seeked", draw);
     };
-  }, [activeTransition, pointerGaze?.durationMs, pointerGaze?.segmentEndMs, pointerGaze?.segmentStartMs, pointerGaze?.videoUri, pointerGazeActive, pointerGazeProgress, renderResolution]);
+  }, [activeTransition, pointerGaze?.directionKeyframesMs, pointerGaze?.durationMs, pointerGaze?.segmentEndMs, pointerGaze?.segmentStartMs, pointerGaze?.videoUri, pointerGazeActive, pointerGazeProgress, renderResolution]);
 
   useEffect(() => {
     if (activeTransition) drawTransitionFrame();
@@ -499,7 +546,11 @@ export function RuntimeMediaCanvas({
       if (cached) stateImageRef.current = cached;
       drawState(cached);
     }
-  }, [activeTransition, bridgeProgress, currentState?.imageUri, effectivePixelArtProfileKey, phase, pixelated, pixelGridSize, pointerGaze?.videoUri, pointerGazeActive, renderResolution]);
+  }, [activeTransition, bridgeProgress, currentState?.imageUri, effectivePixelArtProfileKey, phase, pixelated, pixelGridSize, pointerGaze?.videoUri, pointerGazeActive, pointerGazeBlendProgress, renderResolution]);
+
+  useEffect(() => () => {
+    if (gazeBlendFrameRef.current) window.cancelAnimationFrame(gazeBlendFrameRef.current);
+  }, []);
 
   return (
     <>

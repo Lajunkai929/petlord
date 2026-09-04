@@ -1,4 +1,4 @@
-import { defaultTransitionPlayback, petPackageManifestSchema, type PetPackageManifest, type RuntimeState, type RuntimeTransition, type TransitionTrigger } from "@petlord/schema";
+import { defaultTransitionPlayback, petPackageManifestSchema, type PetPackageManifest, type RuntimePointerGaze, type RuntimeState, type RuntimeTransition, type TransitionTrigger } from "@petlord/schema";
 import {
   computeAuthorityBridgeProgress,
   computeIdleDelay,
@@ -90,7 +90,32 @@ export function pointerGazeProgress(point: NormalizedPoint, previousProgress = 0
   const dy = point.y - 0.5;
   if (Math.hypot(dx, dy) < 0.08) return previousProgress;
   const clockwiseFromLeft = (Math.atan2(dy, dx) + Math.PI) / (Math.PI * 2);
-  return Math.max(0, Math.min(1, clockwiseFromLeft));
+  return (clockwiseFromLeft + 1) % 1;
+}
+
+export function pointerGazeTimeMs(
+  gaze: Pick<RuntimePointerGaze, "directionKeyframesMs" | "durationMs" | "segmentStartMs" | "segmentEndMs">,
+  progress: number,
+) {
+  const durationMs = Math.max(1, gaze.durationMs ?? gaze.segmentEndMs ?? 6000);
+  const keyframes = gaze.directionKeyframesMs;
+  if (!keyframes?.length) {
+    const startMs = Math.max(0, Math.min(durationMs, gaze.segmentStartMs ?? 0));
+    const endMs = Math.max(startMs + 1, Math.min(durationMs, gaze.segmentEndMs ?? durationMs));
+    return startMs + Math.max(0, Math.min(1, progress)) * (endMs - startMs);
+  }
+  const circularProgress = ((progress % 1) + 1) % 1;
+  const position = circularProgress * keyframes.length;
+  const index = Math.floor(position) % keyframes.length;
+  const nextIndex = (index + 1) % keyframes.length;
+  const localProgress = position - Math.floor(position);
+  const currentMs = Math.max(0, Math.min(durationMs, keyframes[index]));
+  const nextMs = Math.max(0, Math.min(durationMs, keyframes[nextIndex]));
+  if (nextIndex === 0 && nextMs <= currentMs) {
+    const wrappedMs = currentMs + (nextMs + durationMs - currentMs) * localProgress;
+    return wrappedMs >= durationMs ? wrappedMs - durationMs : wrappedMs;
+  }
+  return currentMs + (nextMs - currentMs) * localProgress;
 }
 
 export function selectTransitionPlaybackCycles(transition: Pick<RuntimeTransition, "playback">, randomValue: number) {

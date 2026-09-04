@@ -170,6 +170,8 @@ export function buildPetPackage(projectInput: CharacterProject): PetPackageManif
           durationMs: state.pointerGaze.durationMs,
           segmentStartMs: state.pointerGaze.segmentStartMs,
           segmentEndMs: state.pointerGaze.segmentEndMs,
+          directionKeyframesMs: state.pointerGaze.directionKeyframesMs,
+          blendDurationMs: state.pointerGaze.blendDurationMs,
         } : undefined,
       };
     }),
