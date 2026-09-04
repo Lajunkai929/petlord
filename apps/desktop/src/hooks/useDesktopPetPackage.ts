@@ -109,14 +109,28 @@ async function dataUrlBytes(dataUrl: string) {
   return bytes;
 }
 
-async function verifyIntegrity(bundle: PetPackageBundle) {
+async function verifyIntegrity(raw: unknown) {
+  if (!raw || typeof raw !== "object") return;
+  const bundle = raw as {
+    bundleVersion?: unknown;
+    manifest?: unknown;
+    assets?: unknown;
+    integrity?: { manifestSha256?: unknown; assets?: unknown };
+  };
   if (bundle.bundleVersion !== 2) return;
-  if (!bundle.integrity) throw new Error("V2 宠物包缺少完整性信息。");
-  const manifestHash = await sha256(JSON.stringify(bundle.manifest));
-  if (manifestHash !== bundle.integrity.manifestSha256) throw new Error("宠物包 manifest 校验失败，文件可能已损坏或被修改。");
-  for (const [key, expected] of Object.entries(bundle.integrity.assets)) {
-    const dataUrl = bundle.assets[key];
-    if (!dataUrl || await sha256(await dataUrlBytes(dataUrl)) !== expected) throw new Error(`宠物包资产 ${key} 校验失败。`);
+  if (!bundle.integrity || typeof bundle.integrity.manifestSha256 !== "string" || !bundle.integrity.assets || typeof bundle.integrity.assets !== "object") {
+    throw new Error("V2 宠物包缺少完整性信息。");
+  }
+  const serializedManifest = JSON.stringify(bundle.manifest);
+  if (typeof serializedManifest !== "string" || await sha256(serializedManifest) !== bundle.integrity.manifestSha256) {
+    throw new Error("宠物包 manifest 校验失败，文件可能已损坏或被修改。");
+  }
+  const assets = bundle.assets && typeof bundle.assets === "object" ? bundle.assets as Record<string, unknown> : {};
+  for (const [key, expected] of Object.entries(bundle.integrity.assets as Record<string, unknown>)) {
+    const dataUrl = assets[key];
+    if (typeof expected !== "string" || typeof dataUrl !== "string" || await sha256(await dataUrlBytes(dataUrl)) !== expected) {
+      throw new Error(`宠物包资产 ${key} 校验失败。`);
+    }
   }
 }
 
@@ -125,9 +139,9 @@ export function parsePetPackage(contents: string) {
 }
 
 export async function decodePetPackage(contents: DesktopPackageContents) {
-  const bundle = petPackageBundleSchema.parse(JSON.parse(new TextDecoder().decode(await decodeBytes(contents))));
-  await verifyIntegrity(bundle);
-  return bundle;
+  const raw = JSON.parse(new TextDecoder().decode(await decodeBytes(contents))) as unknown;
+  await verifyIntegrity(raw);
+  return petPackageBundleSchema.parse(raw);
 }
 
 export function materializePackageManifest(bundle: PetPackageBundle): PetPackageManifest {

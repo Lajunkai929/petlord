@@ -7,6 +7,11 @@ contextBridge.exposeInMainWorld("petLordDesktop", {
   showPet: () => ipcRenderer.invoke("runtime:show-pet"),
   setIgnoreMouse: (ignore) => ipcRenderer.invoke("runtime:set-ignore-mouse", ignore),
   movePetWindow: (input) => ipcRenderer.send("runtime:move-pet-window", input),
+  onGlobalPointerMoved: (listener) => {
+    const handler = (_event, point) => listener(point);
+    ipcRenderer.on("runtime:global-pointer-moved", handler);
+    return () => ipcRenderer.removeListener("runtime:global-pointer-moved", handler);
+  },
   getSettings: () => ipcRenderer.invoke("runtime:get-settings"),
   updateSettings: (patch) => ipcRenderer.invoke("runtime:update-settings", patch),
   choosePackage: () => ipcRenderer.invoke("runtime:choose-package"),

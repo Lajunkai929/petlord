@@ -20,6 +20,7 @@ const defaultSettings = {
   pixelGridSize: 64,
   pixelated: false,
   dock: "right",
+  gazeTrackingArea: "wide",
   muted: true,
   todoEnabled: true,
   pluginGrants: {},
@@ -31,6 +32,7 @@ let settingsWindow;
 let tray;
 let quitting = false;
 let runtimeSettings = { ...defaultSettings };
+let globalPointerTimer;
 let agentDatabase;
 let agentSocketServer;
 let agentSocketPath;
@@ -534,6 +536,7 @@ function normalizeSettings(candidate) {
     pixelGridSize: [24, 32, 40, 48, 64, 80, 96].includes(candidate?.pixelGridSize) ? candidate.pixelGridSize : 64,
     pixelated: Boolean(candidate?.pixelated),
     dock: ["left", "right", "free"].includes(candidate?.dock) ? candidate.dock : "right",
+    gazeTrackingArea: ["near", "wide", "screen"].includes(candidate?.gazeTrackingArea) ? candidate.gazeTrackingArea : "wide",
     muted: candidate?.muted !== false,
     todoEnabled: candidate?.todoEnabled !== false,
     pluginGrants,
@@ -751,6 +754,31 @@ function setPetWindowIgnoreMouse(ignore) {
   mainWindow?.setIgnoreMouseEvents(Boolean(runtimeSettings.clickThrough || ignore), { forward: true });
 }
 
+function stopGlobalPointerTracking() {
+  if (globalPointerTimer) clearInterval(globalPointerTimer);
+  globalPointerTimer = undefined;
+}
+
+function publishGlobalPointer() {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+  const cursor = screen.getCursorScreenPoint();
+  const bounds = mainWindow.getBounds();
+  mainWindow.webContents.send("runtime:global-pointer-moved", {
+    clientX: cursor.x - bounds.x,
+    clientY: cursor.y - bounds.y,
+    screenX: cursor.x,
+    screenY: cursor.y,
+  });
+}
+
+function syncGlobalPointerTracking() {
+  stopGlobalPointerTracking();
+  if (runtimeSettings.gazeTrackingArea === "near") return;
+  publishGlobalPointer();
+  globalPointerTimer = setInterval(publishGlobalPointer, 33);
+  globalPointerTimer.unref?.();
+}
+
 function applySettings() {
   if (!mainWindow) return;
   if (runtimeSettings.alwaysOnTop) mainWindow.setAlwaysOnTop(true, "floating");
@@ -758,6 +786,7 @@ function applySettings() {
   const [width, height] = petWindowDimensions();
   mainWindow.setSize(width, height, true);
   setPetWindowIgnoreMouse(runtimeSettings.clickThrough);
+  syncGlobalPointerTracking();
   dockWindow();
 }
 
@@ -804,7 +833,7 @@ function createPetWindow(hasPackage) {
     applySettings();
     if (hasPackage) mainWindow.showInactive();
   });
-  mainWindow.on("closed", () => { mainWindow = undefined; });
+  mainWindow.on("closed", () => { stopGlobalPointerTracking(); mainWindow = undefined; });
   loadSurface(mainWindow, "pet");
 }
 
@@ -981,6 +1010,7 @@ app.whenReady().then(async () => {
 app.on("before-quit", () => {
   quitting = true;
   globalShortcut.unregisterAll();
+  stopGlobalPointerTracking();
   agentSocketServer?.close();
   agentDatabase?.close();
   if (process.platform !== "win32" && agentSocketPath) void unlink(agentSocketPath).catch(() => undefined);

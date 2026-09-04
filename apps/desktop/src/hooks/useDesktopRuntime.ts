@@ -10,7 +10,7 @@ import { usePluginRuntime } from "./usePluginRuntime";
 import { useAgentEventBridge } from "./useAgentEventBridge";
 import { useAgentIntegrations } from "./useAgentIntegrations";
 import { usePetWindowHitTest } from "./usePetWindowHitTest";
-import { petWindowPositionForAnchor } from "../petWindowDrag";
+import { normalizedPointerAnchor, petWindowPositionForAnchor, type NormalizedDragAnchor } from "../petWindowDrag";
 
 function pointFromEvent(event: MouseEvent<HTMLElement> | PointerEvent<HTMLElement>) {
   return normalizedPointFromBounds(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect());
@@ -92,6 +92,8 @@ export function useDesktopRuntime() {
   const agentIntegrations = useAgentIntegrations();
   const manifest = petPackage.manifest;
   const petRuntime = usePetRuntime(manifest);
+  const petRuntimeRef = useRef(petRuntime);
+  petRuntimeRef.current = petRuntime;
   const [items, setItems] = useState<TodoItem[]>([]);
   const [title, setTitle] = useState("");
   const [speech, setSpeech] = useState("");
@@ -104,14 +106,15 @@ export function useDesktopRuntime() {
   const pluginClickListenersRef = useRef(new Set<() => boolean | Promise<boolean>>());
   const pluginContextMenuListenersRef = useRef(new Set<() => boolean | Promise<boolean>>());
   const petSurfaceRef = useRef<HTMLDivElement>(null);
-  const dragGestureRef = useRef<{ pointerId: number; startX: number; startY: number; dragging: boolean; bounds: DOMRect; capturer: HTMLDivElement } | undefined>(undefined);
+  const dragGestureRef = useRef<{ pointerId: number; startX: number; startY: number; dragging: boolean; bounds: DOMRect; anchor: NormalizedDragAnchor; capturer: HTMLDivElement } | undefined>(undefined);
   const suppressClickUntilRef = useRef(0);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [dragTransitionMs, setDragTransitionMs] = useState(0);
+  const [windowDragActive, setWindowDragActive] = useState(false);
   const [agentInboxOpen, setAgentInboxOpen] = useState(false);
   const [todoPanelOpen, setTodoPanelOpen] = useState(false);
   const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([]);
-  const petWindowHitTest = usePetWindowHitTest(petSurfaceRef, agentInboxOpen || todoPanelOpen);
+  const petWindowHitTest = usePetWindowHitTest(petSurfaceRef, agentInboxOpen || todoPanelOpen || windowDragActive);
   const showSpeech = useCallback((message: string, durationMs = 4200) => {
     setSpeech(message);
     if (speechTimerRef.current) window.clearTimeout(speechTimerRef.current);
@@ -137,6 +140,25 @@ export function useDesktopRuntime() {
   useEffect(() => {
     performRef.current = petRuntime.performAction;
   }, [petRuntime.performAction]);
+
+  useEffect(() => {
+    const mode = settings.settings.gazeTrackingArea;
+    petRuntimeRef.current.interruptPointerGaze();
+    if (mode === "near") return;
+    return window.petLordDesktop?.onGlobalPointerMoved((pointer) => {
+      const surface = petSurfaceRef.current;
+      if (!surface) return;
+      const runtime = petRuntimeRef.current;
+      runtime.onPointerMove(
+        relativePointFromBounds(pointer.clientX, pointer.clientY, surface.getBoundingClientRect()),
+        {
+          gazeActivationRadius: mode === "wide" ? Math.max(4, runtime.pointerGaze?.activationRadius ?? 0) : undefined,
+          forceGaze: mode === "screen",
+          trackInteractions: false,
+        },
+      );
+    });
+  }, [settings.settings.gazeTrackingArea]);
 
   useEffect(() => {
     if (manifest) showSpeech(`${manifest.characterName} 来啦` , 2200);
@@ -212,40 +234,43 @@ export function useDesktopRuntime() {
     const surface = petSurfaceRef.current;
     if (surface) petRuntime.onPointerMove(relativePointFromBounds(event.clientX, event.clientY, surface.getBoundingClientRect()));
     const gesture = dragGestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId || !petRuntime.dragInteraction) return;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
     if (!gesture.dragging && Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) < 6) return;
     if (!gesture.dragging) {
-      gesture.dragging = petRuntime.beginDrag().accepted;
+      gesture.dragging = petRuntime.dragInteraction ? petRuntime.beginDrag().accepted : true;
       if (!gesture.dragging) return;
-      setDragTransitionMs(window.petLordDesktop ? 0 : petRuntime.dragInteraction.alignmentDurationMs);
+      setWindowDragActive(true);
+      setDragTransitionMs(window.petLordDesktop ? 0 : petRuntime.dragInteraction?.alignmentDurationMs ?? 0);
     } else if (!window.petLordDesktop) setDragTransitionMs(48);
     if (window.petLordDesktop) {
       const position = petWindowPositionForAnchor(
         { x: event.screenX, y: event.screenY },
         gesture.bounds,
-        petRuntime.dragInteraction.anchor,
+        gesture.anchor,
       );
       setDragOffset({ x: 0, y: 0 });
       window.petLordDesktop.movePetWindow({ ...position, pointerX: event.screenX, pointerY: event.screenY });
       return;
     }
     setDragOffset({
-      x: event.clientX - (gesture.bounds.left + petRuntime.dragInteraction.anchor.x * gesture.bounds.width),
-      y: event.clientY - (gesture.bounds.top + petRuntime.dragInteraction.anchor.y * gesture.bounds.height),
+      x: event.clientX - (gesture.bounds.left + gesture.anchor.x * gesture.bounds.width),
+      y: event.clientY - (gesture.bounds.top + gesture.anchor.y * gesture.bounds.height),
     });
   }
 
   function onPetPointerDown(event: PointerEvent<HTMLDivElement>) {
     petWindowHitTest.interactive();
-    if (event.button !== 0 || !petRuntime.dragInteraction || !petSurfaceRef.current) return;
+    if (event.button !== 0 || !petSurfaceRef.current || (!petRuntime.dragInteraction && settings.settings.dock !== "free")) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
+    const bounds = petSurfaceRef.current.getBoundingClientRect();
     dragGestureRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       dragging: false,
-      bounds: petSurfaceRef.current.getBoundingClientRect(),
+      bounds,
+      anchor: petRuntime.dragInteraction?.anchor ?? normalizedPointerAnchor({ x: event.clientX, y: event.clientY }, bounds),
       capturer: event.currentTarget,
     };
   }
@@ -254,11 +279,12 @@ export function useDesktopRuntime() {
     const gesture = dragGestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     if (gesture.capturer.hasPointerCapture(event.pointerId)) gesture.capturer.releasePointerCapture(event.pointerId);
-    if (gesture.dragging && petRuntime.dragInteraction) {
+    if (gesture.dragging) {
       suppressClickUntilRef.current = Date.now() + 350;
-      setDragTransitionMs(window.petLordDesktop ? 0 : petRuntime.dragInteraction.returnDurationMs);
+      setWindowDragActive(false);
+      setDragTransitionMs(window.petLordDesktop ? 0 : petRuntime.dragInteraction?.returnDurationMs ?? 0);
       setDragOffset({ x: 0, y: 0 });
-      petRuntime.endDrag();
+      if (petRuntime.dragInteraction) petRuntime.endDrag();
     }
     dragGestureRef.current = undefined;
   }
@@ -322,7 +348,7 @@ export function useDesktopRuntime() {
     pointerGazeActive: petRuntime.pointerGazeActive,
     pointerGazeProgress: petRuntime.pointerGazeProgress,
     pointerGazeBlendProgress: petRuntime.pointerGazeBlendProgress,
-    dragActive: petRuntime.dragActive,
+    dragActive: petRuntime.dragActive || windowDragActive,
     dragInteraction: petRuntime.dragInteraction,
     petSurfaceRef,
     dragOffset,

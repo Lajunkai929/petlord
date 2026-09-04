@@ -95,6 +95,7 @@ function BehaviorSettings({ controller }: { controller: DesktopSettingsWindowCon
     <div className="behavior-control-block"><span><strong>播放帧率</strong><small>越高越流畅，也会占用更多资源</small></span><ChoiceGroup value={settings.settings.frameRate} options={runtimeFrameRateOptions} onChange={(frameRate) => { void settings.update({ frameRate }); }} /></div>
     <div className="behavior-control-block"><span><strong>像素网格</strong><small>仅在项目启用像素渲染时生效</small></span><ChoiceGroup value={settings.settings.pixelGridSize} options={runtimePixelGridOptions} onChange={(pixelGridSize) => { void settings.update({ pixelGridSize }); }} /></div>
     <div className="behavior-select-row is-single"><label><span><strong>默认位置</strong><small>相对当前显示器</small></span><select value={settings.settings.dock} onChange={(event) => { void settings.update({ dock: event.target.value as typeof settings.settings.dock }); }}><option value="left">左下</option><option value="right">右下</option><option value="free">自由位置</option></select></label></div>
+    <div className="behavior-select-row is-single"><label><span><strong>注视生效范围</strong><small>大范围和全屏会跟踪全局鼠标，但宠物外区域仍可操作下层页面</small></span><select value={settings.settings.gazeTrackingArea} onChange={(event) => { void settings.update({ gazeTrackingArea: event.target.value as typeof settings.settings.gazeTrackingArea }); }}><option value="near">周围小区域</option><option value="wide">周围大区域</option><option value="screen">全屏</option></select></label></div>
   </section>;
 }
 

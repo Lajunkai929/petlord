@@ -13,6 +13,7 @@ export interface DesktopRuntimeSettings {
   pixelGridSize: RuntimePixelGridSize;
   pixelated: boolean;
   dock: "left" | "right" | "free";
+  gazeTrackingArea: "near" | "wide" | "screen";
   muted: boolean;
   todoEnabled: boolean;
   pluginGrants: Record<string, PluginPermission[]>;
@@ -43,6 +44,7 @@ export interface PetLordDesktopBridge {
   showPet(): Promise<void>;
   setIgnoreMouse(ignore: boolean): Promise<void>;
   movePetWindow(input: { x: number; y: number; pointerX?: number; pointerY?: number }): void;
+  onGlobalPointerMoved(listener: (point: { clientX: number; clientY: number; screenX: number; screenY: number }) => void): () => void;
   getSettings(): Promise<DesktopRuntimeSettings>;
   updateSettings(patch: Partial<DesktopRuntimeSettings>): Promise<DesktopRuntimeSettings>;
   choosePackage(): Promise<DesktopPackageContents | null>;

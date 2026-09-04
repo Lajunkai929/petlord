@@ -14,6 +14,7 @@ export const defaultDesktopSettings: DesktopRuntimeSettings = {
   pixelGridSize: 64,
   pixelated: false,
   dock: "right",
+  gazeTrackingArea: "wide",
   muted: true,
   todoEnabled: true,
   pluginGrants: {},

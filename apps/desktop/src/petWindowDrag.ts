@@ -10,6 +10,16 @@ export interface NormalizedDragAnchor {
   y: number;
 }
 
+export function normalizedPointerAnchor(
+  pointer: { x: number; y: number },
+  surface: DragSurfaceBounds,
+): NormalizedDragAnchor {
+  return {
+    x: Math.max(0, Math.min(1, (pointer.x - surface.left) / Math.max(1, surface.width))),
+    y: Math.max(0, Math.min(1, (pointer.y - surface.top) / Math.max(1, surface.height))),
+  };
+}
+
 export function petWindowPositionForAnchor(
   pointer: { x: number; y: number },
   surface: DragSurfaceBounds,

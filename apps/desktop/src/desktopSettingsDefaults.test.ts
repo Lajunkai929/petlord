@@ -6,5 +6,6 @@ describe("desktop companion defaults", () => {
     expect(defaultDesktopSettings.settingsVersion).toBe(2);
     expect(defaultDesktopSettings.alwaysOnTop).toBe(false);
     expect(defaultDesktopSettings.clickThrough).toBe(false);
+    expect(defaultDesktopSettings.gazeTrackingArea).toBe("wide");
   });
 });

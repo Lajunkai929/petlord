@@ -44,6 +44,12 @@ export function relativePointFromBounds(
   };
 }
 
+export interface PointerMoveOptions {
+  gazeActivationRadius?: number;
+  forceGaze?: boolean;
+  trackInteractions?: boolean;
+}
+
 export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
   const core = useMemo(() => manifest ? new PetRuntimeCore(manifest) : null, [manifest]);
   const snapshot = useSyncExternalStore(
@@ -162,11 +168,12 @@ export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
     else core.jumpToState(originStateId, Date.now());
   }, [core, dragReturnPending, snapshot.currentStateId, snapshot.phase]);
 
-  const onPointerMove = useCallback((point: NormalizedPoint) => {
+  const onPointerMove = useCallback((point: NormalizedPoint, options: PointerMoveOptions = {}) => {
     if (!core) return;
     const gaze = currentLogicalState?.pointerGaze;
     const timestamp = Date.now();
-    if (gaze?.enabled && gaze.videoUri && pointIsWithinPointerGazeRange(point, gaze.activationRadius, gaze.anchor)) {
+    const gazeInRange = options.forceGaze || pointIsWithinPointerGazeRange(point, options.gazeActivationRadius ?? gaze?.activationRadius ?? 0, gaze?.anchor);
+    if (gaze?.enabled && gaze.videoUri && gazeInRange) {
       const activation = pointerGazeState.active
         ? { accepted: true }
         : core.beginPath([], "pointer", timestamp, "注视鼠标");
@@ -176,6 +183,7 @@ export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
     } else {
       setPointerGazeState((current) => current.active ? { ...current, active: false } : current);
     }
+    if (options.trackInteractions === false) return;
     if (timestamp - lastInteractionSyncAtRef.current < 100) return;
     lastInteractionSyncAtRef.current = timestamp;
     core.movePointer(point, timestamp);

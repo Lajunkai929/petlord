@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PetPackageManifest } from "@petlord/schema";
+import type { PetPackageBundle, PetPackageManifest } from "@petlord/schema";
 import { buildPortablePetBundle, buildPortablePetBundleV2, encodePortablePetBundle } from "./portablePetPackage";
 import { decodePetPackage, materializePackageManifest } from "../../../desktop/src/hooks/useDesktopPetPackage";
 
@@ -69,5 +69,24 @@ describe("portable pet package", () => {
     const bundle = await buildPortablePetBundleV2(withGaze, new Map([["/sit.png", image], ["/gaze.webm", video]]));
     expect(bundle.manifest.logicalStates[0]?.pointerGaze?.videoUri).toMatch(/^asset:\/\//);
     expect(materializePackageManifest(bundle).logicalStates[0]?.pointerGaze?.videoUri).toBe(video);
+  });
+
+  it("verifies an older signed manifest before adding new schema defaults", async () => {
+    const withGaze: PetPackageManifest = {
+      ...manifest,
+      logicalStates: [{
+        ...manifest.logicalStates[0]!,
+        pointerGaze: { enabled: true, motionTarget: "head", activationRadius: 1.4, anchor: { x: 0.5, y: 0.5 }, videoUri: "/gaze.webm", durationMs: 6000, segmentStartMs: 0, segmentEndMs: 6000, directionKeyframesMs: [600, 1200, 1800, 2400, 3000, 3600, 4200, 4800], blendDurationMs: 240 },
+      }],
+    };
+    const bundle = await buildPortablePetBundleV2(withGaze, new Map([["/sit.png", "data:image/png;base64,AAAA"], ["/gaze.webm", "data:video/webm;base64,BBBB"]]));
+    const legacy = structuredClone(bundle) as PetPackageBundle & { manifest: PetPackageManifest };
+    delete (legacy.manifest.logicalStates[0]!.pointerGaze as Partial<NonNullable<typeof legacy.manifest.logicalStates[0]["pointerGaze"]>>).anchor;
+    const bytes = new TextEncoder().encode(JSON.stringify(legacy.manifest));
+    legacy.integrity!.manifestSha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))]
+      .map((value) => value.toString(16).padStart(2, "0"))
+      .join("");
+    const decoded = await decodePetPackage(new TextEncoder().encode(JSON.stringify(legacy)));
+    expect(decoded.manifest.logicalStates[0]?.pointerGaze?.anchor).toEqual({ x: 0.5, y: 0.5 });
   });
 });
