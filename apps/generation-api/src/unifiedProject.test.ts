@@ -9,6 +9,7 @@ import { PNG } from "pngjs";
 import ffmpeg from "ffmpeg-static";
 import { buildPetPackage } from "@petlord/state-engine";
 import { startPetLordServer } from "./appServer";
+import { nativeMediaFixtureOptions } from "../test/nativeMediaFixture";
 import { decodeInstalledPackage, projectFromInstalledPackage } from "./installedPackages";
 
 const document = {
@@ -21,7 +22,7 @@ const document = {
 
 async function setup() {
   const directory = await mkdtemp(join(tmpdir(), "petlord-unified-"));
-  const server = await startPetLordServer({ port: 0, runtimeDataDirectory: directory });
+  const server = await startPetLordServer({ port: 0, runtimeDataDirectory: directory, ...nativeMediaFixtureOptions() });
   let revision = 0;
   async function call(command: string, input: unknown = {}, extra: object = {}) {
     const response = await fetch(server.url + "/api/design/v1/execute", {

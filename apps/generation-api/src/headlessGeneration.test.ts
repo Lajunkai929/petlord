@@ -1,9 +1,10 @@
 import { createServer } from "node:http";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import { startPetLordServer } from "./appServer";
+import { nativeMediaFixtureOptions } from "../test/nativeMediaFixture";
 
 it("finishes provider generation and persists usable candidates while no Studio is open", async () => {
   const directory = await mkdtemp(join(tmpdir(), "petlord-headless-generation-"));
@@ -17,7 +18,7 @@ it("finishes provider generation and persists usable candidates while no Studio 
   });
   await new Promise<void>(done => provider.listen(0, "127.0.0.1", done));
   const address = provider.address() as { port: number };
-  const api = await startPetLordServer({ port: 0, runtimeDataDirectory: directory });
+  const api = await startPetLordServer({ port: 0, runtimeDataDirectory: directory, ...nativeMediaFixtureOptions() });
   let index = 0;
   async function call(command: string, input: unknown, extra: object = {}) {
     const response = await fetch(api.url + "/api/design/v1/execute", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: `job-test-${++index}`, command, input, ...extra }) });
@@ -38,6 +39,8 @@ it("finishes provider generation and persists usable candidates while no Studio 
     }
     expect(job.error).toBeUndefined();
     expect(job.status).toBe("succeeded");
+    // The suite supplies a real prebuilt helper; jobs must not cold-compile per server.
+    await expect(stat(join(directory, "native"))).rejects.toMatchObject({ code: "ENOENT" });
     expect(providerRequests).toHaveLength(1);
     expect(providerRequests[0].sequential_image_generation).toBe("disabled");
     expect(providerRequests[0].prompt).toContain("front paws together");

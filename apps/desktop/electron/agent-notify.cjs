@@ -4,7 +4,6 @@
 const { readFileSync } = require("node:fs");
 const { request } = require("node:http");
 const { randomUUID } = require("node:crypto");
-const { DatabaseSync } = require("node:sqlite");
 const { spawn } = require("node:child_process");
 
 function option(name) {
@@ -58,7 +57,24 @@ function deliver(socketPath, token, input) {
   });
 }
 
+function loadDatabaseSync() {
+  const originalEmitWarning = process.emitWarning;
+  // Node 22 marks SQLite experimental. Silence only its routine import notice while
+  // loading the fallback; unrelated runtime warnings keep their normal behavior.
+  process.emitWarning = function (warning, type, ...args) {
+    const message = typeof warning === "string" ? warning : warning?.message;
+    const warningType = typeof warning === "string"
+      ? (typeof type === "string" ? type : type?.type)
+      : warning?.name;
+    if (warningType === "ExperimentalWarning" && message === "SQLite is an experimental feature and might change at any time") return;
+    return Reflect.apply(originalEmitWarning, this, [warning, type, ...args]);
+  };
+  try { return require("node:sqlite").DatabaseSync; }
+  finally { process.emitWarning = originalEmitWarning; }
+}
+
 function spool(databasePath, source, payload, receivedAt) {
+  const DatabaseSync = loadDatabaseSync();
   const database = new DatabaseSync(databasePath);
   database.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
   database.exec(`
@@ -81,6 +97,7 @@ function forward(rawPayload) {
     const command = JSON.parse(readFileSync(forwardFile, "utf8"));
     if (!Array.isArray(command) || !command.every((item) => typeof item === "string") || command.length === 0) return;
     const child = spawn(command[0], [...command.slice(1), rawPayload], { detached: true, stdio: "ignore" });
+    child.on("error", () => undefined);
     child.unref();
   } catch {
     // Existing notifiers are best-effort; PetLord must never block the agent.
@@ -101,7 +118,18 @@ async function main() {
   } finally {
     if (mode === "codex") forward(rawPayload);
   }
-  if (mode === "codex-hook") payload = await require("./codex-notifications.cjs").enrichCodexHookPayload(payload);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
+  if (mode === "codex") {
+    // Legacy installations copy only this file, so keep their validation standalone.
+    const session = payload.session_id ?? payload["thread-id"] ?? payload.thread_id;
+    const legacyTypes = ["agent-turn-complete", "agent-needs-attention", "agent-turn-failed"];
+    const hookTypes = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Interrupt", "SessionEnd", "Stop"];
+    if (typeof session !== "string" || !session.trim() || !(legacyTypes.includes(payload.type) || hookTypes.includes(payload.hook_event_name))) return;
+  } else if (mode === "codex-hook") {
+    const notifications = require("./codex-notifications.cjs");
+    try { notifications.normalizeCodexEvent(payload); } catch { return; }
+    payload = await notifications.enrichCodexHookPayload(payload);
+  }
   const socketPath = option("--socket");
   const tokenFile = option("--token-file");
   const databasePath = option("--database");
