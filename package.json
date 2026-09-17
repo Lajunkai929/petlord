@@ -6,7 +6,7 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=22.5"
+    "node": ">=22.13"
   },
   "workspaces": [
     "apps/*",
@@ -27,11 +27,20 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p apps/studio/tsconfig.json && tsc --noEmit -p apps/desktop/tsconfig.json && tsc --noEmit -p apps/generation-api/tsconfig.json",
-    "check": "npm run typecheck && npm run test && npm run build"
+    "check": "npm run check:public && npm run check:design && npm run typecheck && npm run test && npm run build",
+    "design": "node scripts/design-cli.mjs",
+    "tokens:ui": "node scripts/ui-token-css.mjs --write",
+    "check:design": "node scripts/check-design-system.mjs",
+    "check:public": "node --test scripts/check-public-release.test.mjs scripts/local-reference-inputs.test.mjs && node scripts/check-public-release.mjs"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@napi-rs/canvas": "^1.0.9",
     "@types/node": "latest",
     "concurrently": "latest",
+    "happy-dom": "^20.14.0",
+    "postcss": "8.5.26",
+    "rolldown": "1.2.6",
     "typescript": "latest",
     "vitest": "latest"
   }

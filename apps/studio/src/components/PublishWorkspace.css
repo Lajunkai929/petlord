@@ -1,0 +1,45 @@
+.local-publish-workspace { overflow: auto; }
+.local-publish-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr); gap: 18px; }
+.local-apply-card { display: flex; flex-direction: column; align-items: flex-start; gap: 18px; }
+.local-apply-title { display: flex; align-items: center; gap: 14px; }
+.local-apply-title h2, .local-package-summary h2, .local-share-section h2 { margin: 0; }
+.local-apply-title p, .local-share-section p { margin: 4px 0 0; }
+.local-apply-status { display: flex; flex-wrap: wrap; gap: 6px; }
+.local-apply-message { margin: 0; }
+.local-apply-button { min-width: 210px; }
+.local-apply-card .ant-alert { width: 100%; }
+.local-package-summary dl { display: grid; gap: 8px; margin: 18px 0; }
+.local-package-summary dl div { display: flex; justify-content: space-between; }
+.local-package-summary dd { margin: 0; }
+.local-ready-line { display: flex; align-items: center; gap: 8px; }
+.local-share-section { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px 24px; margin-top: 18px; }
+.local-share-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.local-share-section .ant-alert, .local-share-section > a { grid-column: 1 / -1; }
+.local-share-section > a { display: inline-flex; align-items: center; gap: 6px; }
+
+@media (max-width: 900px) {
+  .local-publish-layout { grid-template-columns: 1fr; }
+  .local-share-section { grid-template-columns: 1fr; }
+  .local-share-actions { justify-content: flex-start; }
+}
+
+/* Application appearance is layered below the shared component library; unlayered rules above own layout. */
+
+@layer petlord-application {
+ .local-apply-card,
+.local-package-summary,
+.local-share-section { border: 1px solid var(--border); border-radius: var(--radius-dialog); background: var(--surface-raised); box-shadow: 0 10px 28px var(--shadow); }
+ .local-apply-card { min-height: 330px; padding: 28px; }
+ .local-apply-title h2,
+.local-package-summary h2,
+.local-share-section h2 { color: var(--text); font-size: var(--font-section); line-height: var(--line-section); }
+ .local-apply-title p,
+.local-share-section p { color: var(--text-muted); }
+ .local-apply-message { min-height: 24px; color: var(--text-soft); line-height: 1.55; }
+ .local-package-summary { padding: 24px; }
+ .local-package-summary dl div { padding: 10px 0; border-bottom: 1px solid var(--border); }
+ .local-package-summary dt { color: var(--text-muted); }
+ .local-package-summary dd { color: var(--text); font-weight: var(--weight-bold); }
+ .local-ready-line { color: var(--success); }
+ .local-share-section { padding: 22px 24px; }
+ .local-share-section > a { color: var(--accent); } }

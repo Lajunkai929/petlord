@@ -10,6 +10,8 @@ export interface TransitionPreviewData {
   id: string;
   label: string;
   sourceUri: string;
+  sourceNativePixel?: RuntimeState["nativePixel"];
+  targetNativePixel?: RuntimeState["nativePixel"];
   videoUri: string;
   targetUri: string;
   targetMode: "authority-reference" | "video-frame" | "source-frame";
@@ -56,7 +58,7 @@ export function useTransitionContinuityPreview(data: TransitionPreviewData, onCl
   function finishVideo() {
     if (bridgeStartedRef.current) return;
     setVideoProgress(1);
-    if (data.authorityBridge.mode === "hard-cut") {
+    if (data.targetNativePixel || data.authorityBridge.mode === "hard-cut") {
       setPhase("target");
       return;
     }
@@ -103,6 +105,7 @@ export function useTransitionContinuityPreview(data: TransitionPreviewData, onCl
     logicalStateId: `${data.id}-preview-source`,
     label: "起始实际展示图",
     imageUri: data.sourceUri,
+    nativePixel: data.sourceNativePixel,
     origin: "reference",
   };
   const targetState: RuntimeState = {
@@ -110,6 +113,7 @@ export function useTransitionContinuityPreview(data: TransitionPreviewData, onCl
     logicalStateId: `${data.id}-preview-target`,
     label: "结束实际展示图",
     imageUri: data.targetUri,
+    nativePixel: data.targetNativePixel,
     origin: data.targetMode === "video-frame" ? "transition-tail" : "reference",
   };
   const runtimeTransition: RuntimeTransition = {
@@ -140,6 +144,7 @@ export function useTransitionContinuityPreview(data: TransitionPreviewData, onCl
     cycleCount,
     setPlaybackError,
     currentState: phase === "target" ? targetState : sourceState,
+    targetState,
     activeTransition: phase === "video" ? runtimeTransition : null,
     runtimePhase,
     replay,

@@ -1,0 +1,14 @@
+@import "./tokens.generated.css";
+@import "./controls.css";
+
+.pl-select { min-width: 96px; max-width: 100%; font-family: var(--font-sans); }
+.pl-select-control { display: inline-flex; min-width: 0; max-width: 100%; vertical-align: middle; }
+.pl-select-control > .pl-select { width: 100%; }
+label > .pl-select-control, .field > .pl-select-control, .field-grid .pl-select-control { width: 100%; }
+.pl-select .ant-select-content { min-width: 0; }
+.pl-select.ant-select-focused { outline: var(--control-focus-width) solid var(--accent); outline-offset: var(--control-focus-offset); border-radius: var(--radius-control); }
+.ant-select-dropdown .ant-select-item-option-content { white-space: normal; }
+:where(button, [role="button"], summary, input:not([role="combobox"]), textarea):focus-visible { outline: var(--control-focus-width) solid var(--accent); outline-offset: var(--control-focus-offset); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}

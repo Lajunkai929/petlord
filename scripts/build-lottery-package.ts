@@ -1,3 +1,4 @@
+import { collectRuntimeMediaUris } from "@petlord/schema";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -71,10 +72,7 @@ async function main() {
     if (transition.status === "review") project = approveProjectTransition(project, transition.id).project;
   }
   const manifest = buildPetPackage(project);
-  const uris = [...new Set([
-    ...manifest.states.map((state) => state.imageUri),
-    ...manifest.transitions.flatMap((transition) => [transition.videoUri, transition.tailFrameUri]),
-  ])];
+  const uris = collectRuntimeMediaUris(manifest);
   const media = new Map<string, string>();
   for (const uri of uris) media.set(uri, await materialize(uri));
 

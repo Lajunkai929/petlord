@@ -22,6 +22,8 @@ export const pluginManifestSchema = pluginDeclarationSchema.extend({
 export type PluginManifest = z.infer<typeof pluginManifestSchema>;
 
 export interface PetSnapshot {
+  /** Changes when the host creates a new runtime instance (for example, a pet package switch). */
+  runtimeId?: string;
   stateId: string;
   logicalStateId: string;
   availableActions: string[];
@@ -30,6 +32,8 @@ export interface PetSnapshot {
 export interface PetControlApi {
   getSnapshot(): Promise<PetSnapshot>;
   perform(action: string): Promise<{ accepted: boolean; reason?: string }>;
+  setActivityLoop?(action: string | null): Promise<{ accepted: boolean; reason?: string }>;
+  /** durationMs: 0 keeps a status visible until the next message (or an empty message clears it). */
   speak(message: string, options?: { durationMs?: number }): Promise<void>;
   onStateChanged(listener: (snapshot: PetSnapshot) => void): () => void;
 }
@@ -47,7 +51,7 @@ export interface PluginUiApi {
 }
 
 export interface PluginEventApi {
-  list(input?: { source?: AgentEventSource; unreadOnly?: boolean; limit?: number }): Promise<AgentEvent[]>;
+  list(input?: { source?: AgentEventSource; unreadOnly?: boolean; notificationsOnly?: boolean; latestPerSession?: boolean; limit?: number }): Promise<AgentEvent[]>;
   subscribe(source: AgentEventSource, listener: (event: AgentEvent) => void): () => void;
   acknowledge(id: string, input?: { opened?: boolean }): Promise<AgentEvent | undefined>;
 }
@@ -119,6 +123,10 @@ export function createPermissionedPluginContext(
       async perform(action) {
         requirePermission(pluginId, granted, "pet:control");
         return base.pet.perform(action);
+      },
+      async setActivityLoop(action) {
+        requirePermission(pluginId, granted, "pet:control");
+        return base.pet.setActivityLoop?.(action) ?? { accepted: false, reason: "此运行时尚不支持持续工作动作。" };
       },
       async speak(message, options) {
         requirePermission(pluginId, granted, "pet:control");

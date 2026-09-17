@@ -1,3 +1,4 @@
+import { Button } from "@petlord/ui";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { ArrowClockwise, Bug, WarningCircle } from "@phosphor-icons/react";
 import { reportRuntimeError } from "../runtimeDiagnostics";
@@ -25,7 +26,7 @@ export class RuntimeErrorBoundary extends Component<{ children: ReactNode }, { e
         <span>桌面宠物遇到问题</span>
         <h1>可以恢复，不会丢失宠物包。</h1>
         <p>{this.state.error.message}</p>
-        <div><button type="button" onClick={() => window.location.reload()}><ArrowClockwise size={15} />重新加载</button><button type="button" onClick={() => this.exportDiagnostics()}><Bug size={15} />导出诊断报告</button></div>
+        <div><Button type="default" htmlType="button" onClick={() => window.location.reload()}><ArrowClockwise size={15} />重新加载</Button><Button type="default" htmlType="button" onClick={() => this.exportDiagnostics()}><Bug size={15} />导出诊断报告</Button></div>
       </main>
     );
   }

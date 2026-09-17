@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CharacterProject } from "@petlord/schema";
 import { projectTemplates, saveProjectAsTemplate, type ProjectTemplateDefinition, type SavedProjectTemplate } from "../projectTemplates";
 import { listWorkspaceEntities, saveWorkspaceEntity } from "../workspaceApi";
+import { useSyncedLibrary } from "./useSyncedLibrary";
 
 const customTemplateLibraryKey = "petlord.v3.project-templates.v1";
 
@@ -44,10 +45,7 @@ export function useProjectTemplateLibrary(
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => {
-    if (!hydrated) return;
-    void Promise.all(customTemplates.map((template) => saveWorkspaceEntity("template", template.id, template)));
-  }, [customTemplates, hydrated]);
+  useSyncedLibrary("template", customTemplates, setCustomTemplates, hydrated, inform);
 
   function saveCurrentProject(name: string, description: string) {
     if (!project.logicalStates.length) {

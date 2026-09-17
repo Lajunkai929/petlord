@@ -1,4 +1,4 @@
-import { Button, Popover, Tag, Tooltip } from "antd";
+import { Button, Popover, Tag, Tooltip, Checkbox } from "@petlord/ui";
 import { Check, CheckCircle, Code, Database, Play, PuzzlePiece, Robot, ShieldCheck } from "@phosphor-icons/react";
 import type { AgentEventSource, PluginPermission } from "@petlord/schema";
 import { useAgentPluginStudio } from "../hooks/useAgentPluginStudio";
@@ -19,7 +19,7 @@ const permissionLabels: Record<PluginPermission, string> = {
 };
 
 function PluginToggle({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
-  return <label className={checked ? "is-active" : ""}><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><i /><span>{checked ? "已加入" : "加入项目"}</span></label>;
+  return <Checkbox className={checked ? "is-active" : ""} checked={checked} onChange={(event) => onChange(event.target.checked)}><span>{checked ? "已加入" : "加入项目"}</span></Checkbox>;
 }
 
 function PermissionPopover({ permissions }: { permissions: PluginPermission[] }) {
@@ -49,7 +49,7 @@ export function PluginWorkspace({ studio }: { studio: StudioController }) {
           </div>
           <div className="plugin-event-preview">
             <header><strong>事件通道</strong><Tag color={agentStudio.error ? "error" : "success"}>{agentStudio.error ? "服务异常" : "SQLite 已连接"}</Tag></header>
-            {agentStudio.events.length === 0 ? <p>发送一条测试事件验证连接。</p> : agentStudio.events.slice(0, 4).map((event) => <article className={event.acknowledgedAt ? "is-read" : ""} key={event.id}><i data-source={event.source}>{event.source === "claude" ? "C" : "X"}</i><span><strong>{event.title}</strong><small>{sourceLabel(event.source)} · {event.type}</small></span>{event.acknowledgedAt ? <Check size={14} /> : <button type="button" onClick={() => { void agentStudio.acknowledge(event.id); }} aria-label="标为已读"><Check size={13} /></button>}</article>)}
+            {agentStudio.events.length === 0 ? <p>发送一条测试事件验证连接。</p> : agentStudio.events.slice(0, 4).map((event) => <article className={event.acknowledgedAt ? "is-read" : ""} key={event.id}><i data-source={event.source}>{event.source === "claude" ? "C" : "X"}</i><span><strong>{event.title}</strong><small>{sourceLabel(event.source)} · {event.type}</small></span>{event.acknowledgedAt ? <Check size={14} /> : <Button type="default" htmlType="button" onClick={() => { void agentStudio.acknowledge(event.id); }} aria-label="标为已读"><Check size={13} /></Button>}</article>)}
           </div>
         </section>
 

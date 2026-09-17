@@ -1,7 +1,7 @@
 {
   "name": "@petlord/desktop",
-  "version": "0.1.4",
-  "description": "Independent PetLord desktop-pet runtime",
+  "version": "0.1.13",
+  "description": "Integrated PetLord desktop pet runtime and design Studio",
   "author": "PetLord contributors",
   "license": "MIT",
   "private": true,
@@ -12,15 +12,17 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "electron": "electron electron/main.cjs",
-    "build": "tsc --noEmit && vite build && node --check electron/main.cjs && node --check electron/preload.cjs",
-    "dist:dir": "npm run build && electron-builder --dir --publish never",
-    "dist:mac": "npm run build && electron-builder --mac dmg --arm64 --publish never",
+    "build:renderer": "tsc --noEmit && vite build && node --check electron/application-menu.cjs && node --check electron/main.cjs && node --check electron/package-store.cjs && node --check electron/preload.cjs && node --check electron/studio-host.cjs && node --check electron/studio-preload.cjs",
+    "build:resources": "node scripts/build-resources.mjs",
+    "build": "npm run build:renderer && npm run build:resources",
+    "dist:dir": "node scripts/package.mjs dir",
+    "dist:mac": "node scripts/package.mjs mac-arm64",
     "dist:mac:arm64": "npm run dist:mac",
-    "dist:mac:universal": "npm run build && electron-builder --mac dmg --universal --publish never",
+    "dist:mac:universal": "node scripts/package.mjs mac-universal",
     "dist:linux": "npm run dist:linux:x64",
-    "dist:linux:x64": "npm run build && electron-builder --linux AppImage deb --x64 --publish never",
+    "dist:linux:x64": "node scripts/package.mjs linux-x64",
     "dist:win": "npm run dist:win:x64",
-    "dist:win:x64": "npm run build && electron-builder --win nsis --x64 --publish never"
+    "dist:win:x64": "node scripts/package.mjs win-x64"
   },
   "dependencies": {
     "@petlord/plugin-agent-activity": "*",
@@ -33,7 +35,9 @@
     "@phosphor-icons/react": "latest",
     "@radix-ui/react-dialog": "^1.1.23",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "@petlord/ui": "*",
+    "antd": "^6.6.2"
   },
   "devDependencies": {
     "@types/react": "latest",
@@ -41,6 +45,8 @@
     "@vitejs/plugin-react": "latest",
     "electron": "44.0.0",
     "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "pngjs": "^7.0.0",
     "vite": "latest"
   },
   "build": {
@@ -55,8 +61,20 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "resources/**/*",
+      "service/**/*",
+      "studio/**/*",
       "build/icon.png",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "native/${arch}",
+        "to": "native",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "mac": {
       "category": "public.app-category.productivity",

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { petPackageBundleSchema, publishedPackageSummarySchema, type PetPackageBundle, type PetPackageManifest, type PublishedPackageSummary } from "@petlord/schema";
+import { mapRuntimeMediaUris, petPackageBundleSchema, publishedPackageSummarySchema, type PetPackageBundle, type PetPackageManifest, type PublishedPackageSummary } from "@petlord/schema";
 import type { DesktopPackageContents, InstalledPackageSummary, PackageImportOptions } from "../desktopBridge";
 
 const databaseName = "petlord-desktop";
@@ -114,8 +114,9 @@ async function verifyIntegrity(raw: unknown) {
   const bundle = raw as {
     bundleVersion?: unknown;
     manifest?: unknown;
+    sourceProject?: unknown;
     assets?: unknown;
-    integrity?: { manifestSha256?: unknown; assets?: unknown };
+    integrity?: { manifestSha256?: unknown; sourceProjectSha256?: unknown; assets?: unknown };
   };
   if (bundle.bundleVersion !== 2) return;
   if (!bundle.integrity || typeof bundle.integrity.manifestSha256 !== "string" || !bundle.integrity.assets || typeof bundle.integrity.assets !== "object") {
@@ -126,6 +127,7 @@ async function verifyIntegrity(raw: unknown) {
     throw new Error("宠物包 manifest 校验失败，文件可能已损坏或被修改。");
   }
   const assets = bundle.assets && typeof bundle.assets === "object" ? bundle.assets as Record<string, unknown> : {};
+  if (bundle.sourceProject !== undefined && await sha256(JSON.stringify(bundle.sourceProject)) !== bundle.integrity.sourceProjectSha256) throw new Error("宠物包创作源码校验失败。");
   for (const [key, expected] of Object.entries(bundle.integrity.assets as Record<string, unknown>)) {
     const dataUrl = assets[key];
     if (typeof expected !== "string" || typeof dataUrl !== "string" || await sha256(await dataUrlBytes(dataUrl)) !== expected) {
@@ -147,19 +149,7 @@ export async function decodePetPackage(contents: DesktopPackageContents) {
 export function materializePackageManifest(bundle: PetPackageBundle): PetPackageManifest {
   if (bundle.bundleVersion === 1) return bundle.manifest;
   const resolve = (uri: string) => uri.startsWith("asset://") ? bundle.assets[uri.slice("asset://".length)] ?? uri : uri;
-  return {
-    ...bundle.manifest,
-    states: bundle.manifest.states.map((state) => ({ ...state, imageUri: resolve(state.imageUri) })),
-    transitions: bundle.manifest.transitions.map((transition) => ({
-      ...transition,
-      videoUri: resolve(transition.videoUri),
-      tailFrameUri: resolve(transition.tailFrameUri),
-    })),
-    logicalStates: bundle.manifest.logicalStates.map((state) => ({
-      ...state,
-      pointerGaze: state.pointerGaze?.videoUri ? { ...state.pointerGaze, videoUri: resolve(state.pointerGaze.videoUri) } : state.pointerGaze,
-    })),
-  };
+  return mapRuntimeMediaUris(bundle.manifest, resolve);
 }
 
 function packageSummary(bundle: PetPackageBundle, key: string, activeKey: string): InstalledPackageSummary {
@@ -319,20 +309,22 @@ export function useDesktopPetPackage() {
     setSubscriptionUrlState(value);
   }
 
-  async function refreshSubscription() {
+  async function refreshSubscription(serverUrl = subscriptionUrl) {
     setSubscriptionLoading(true);
     setSubscriptionError(undefined);
     setSubscriptionMessage(undefined);
     try {
-      const normalized = normalizeSubscriptionServerUrl(subscriptionUrl);
+      const normalized = normalizeSubscriptionServerUrl(serverUrl);
       const packages = await listRemotePackages(normalized);
       localStorage.setItem(subscriptionUrlKey, normalized);
       setSubscriptionUrlState(normalized);
       setSubscriptionPackages(packages);
       if (packages.length === 0) setSubscriptionMessage("服务器已连接，但还没有发布宠物包。");
+      return true;
     } catch (caught) {
       setSubscriptionPackages([]);
       setSubscriptionError(caught instanceof Error ? caught.message : "订阅服务器连接失败");
+      return false;
     } finally {
       setSubscriptionLoading(false);
     }

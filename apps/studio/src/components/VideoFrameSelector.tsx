@@ -1,3 +1,4 @@
+import { Button } from "@petlord/ui";
 import { Check, FilmStrip, SpinnerGap } from "@phosphor-icons/react";
 import { useVideoFrameSelector } from "../hooks/useVideoFrameSelector";
 import { PreviewableImage } from "./PreviewableImage";
@@ -53,10 +54,10 @@ export function VideoFrameSelector({ videoUri, initialTimeMs, selectedFrameUri, 
       <div className="frame-selector-review">
         {selectedFrameUri && <PreviewableImage className="checkerboard" src={selectedFrameUri} alt="当前选定的真实展示帧" />}
         <div>
-          <button className="secondary-button" type="button" disabled={frame.saving || !frame.durationMs} onClick={frame.selectCurrentFrame}>
+          <Button type="default" className="secondary-button" htmlType="button" disabled={frame.saving || !frame.durationMs} onClick={frame.selectCurrentFrame}>
             {frame.saving ? <SpinnerGap className="spin" size={16} /> : <Check size={16} weight="bold" />}
             {frame.saving ? "正在保存" : "采用当前画面"}
-          </button>
+          </Button>
         </div>
       </div>
       {frame.error && <p className="frame-selector-error">{frame.error}</p>}

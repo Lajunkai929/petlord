@@ -18,7 +18,7 @@ describe("Lottery Stardew pixel product fixture", () => {
     expect(byId.get("pixel-lying-sleep")?.triggers[0]).toMatchObject({ event: "inactivity", timerDurationMs: 10_000 });
     expect(byId.get("pixel-sitting-lying")?.triggers[0]).toMatchObject({ event: "inactivity", timerDurationMs: 10_000 });
     expect(byId.get("pixel-lying-ear")?.triggers[0]).toMatchObject({ event: "left-click", region: expect.any(Object) });
-    expect(byId.get("pixel-lying-belly")?.triggers[0]).toMatchObject({ event: "double-click", region: expect.any(Object) });
+    expect(byId.get("pixel-lying-belly")?.triggers[0]).toMatchObject({ event: "left-click", region: expect.any(Object) });
     expect(byId.get("pixel-lying-sit")?.triggers[0]).toMatchObject({ event: "left-click", region: expect.any(Object) });
     expect(byId.get("pixel-belly-wiggle")?.triggers[0]).toMatchObject({ event: "hover", repeatWhileHovered: true });
     expect(byId.get("pixel-belly-lying")?.triggers[0]).toMatchObject({ event: "pointer-leave" });

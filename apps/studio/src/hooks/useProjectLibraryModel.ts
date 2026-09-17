@@ -16,11 +16,13 @@ export function useProjectLibraryModel(projects: ProjectSummary[], styles: Style
         name: project.name,
         characterName: project.characterName,
         thumbnail: project.thumbnail,
+        pixelated: Boolean(project.thumbnailNative),
         stateCount: project.stateCount,
         approvedTransitionCount: project.approvedTransitionCount,
         transitionCount: project.transitionCount,
         progress: project.transitionCount > 0 ? Math.round(project.approvedTransitionCount / project.transitionCount * 100) : 0,
         styleName: style?.name ?? "自定义风格",
+        importLabel: project.importedPackage ? project.importedPackage.source === "editable-source" ? "从宠物包恢复源码" : "从已安装宠物恢复" : undefined,
         updatedLabel: updatedLabel(project.updatedAt),
         current: project.id === currentProjectId,
       };

@@ -14,26 +14,61 @@ function sourceLabel(source: AgentEventSource) {
 
 export class AgentActivityController {
   private events: AgentEvent[] = [];
+  private readonly seenEventIds = new Set<string>();
   private reactionEventId?: string;
+  private readonly sessions = new Map<string, AgentEvent>();
+  private loopAction: string | null = null;
+  private runtimeId?: string;
+  private queue: Promise<void> = Promise.resolve();
+  private disposed = false;
   private readonly disposers: Array<() => void> = [];
   private readonly listeners = new Set<() => void>();
 
   constructor(private readonly context: PetPluginContext) {}
 
   async activate() {
-    this.events = await this.context.events.list({ unreadOnly: false, limit: 100 });
-    this.reactionEventId = this.events.find((item) => !item.acknowledgedAt && REACTION_TYPES.has(item.type))?.id;
-    this.disposers.push(
-      this.context.events.subscribe("claude", (event) => { void this.receive(event); }),
-      this.context.events.subscribe("codex", (event) => { void this.receive(event); }),
-      this.context.interactions.onPetClick(() => this.openReaction()),
-      this.context.interactions.onPetContextMenu(() => this.openInbox()),
-    );
-    this.emit();
-    return this;
+    let loading = true;
+    const buffered: AgentEvent[] = [];
+    const incoming = (event: AgentEvent) => {
+      if (loading) buffered.push(event);
+      else void this.receive(event).catch(() => undefined);
+    };
+    // Subscribe before reading history so a completion cannot disappear between the read and subscribe.
+    this.disposers.push(this.context.events.subscribe("claude", incoming), this.context.events.subscribe("codex", incoming));
+    try {
+      const [recentEvents, notifications] = await Promise.all([
+        this.context.events.list({ unreadOnly: false, latestPerSession: true, limit: 100 }),
+        this.context.events.list({ unreadOnly: false, notificationsOnly: true, limit: 100 }),
+      ]);
+      this.events = notifications.filter(event => REACTION_TYPES.has(event.type));
+      // Reduce both snapshots in time order; the per-session result is authoritative for equal timestamps.
+      for (const event of [...notifications, ...recentEvents].sort((left, right) => left.receivedAt.localeCompare(right.receivedAt))) {
+        this.rememberEvent(event.id); this.updateSession(event);
+      }
+      this.reactionEventId = this.events.find(item => !item.acknowledgedAt)?.id;
+      this.disposers.push(
+        this.context.pet.onStateChanged(snapshot => {
+          if (!snapshot.runtimeId || snapshot.runtimeId === this.runtimeId) return;
+          this.runtimeId = snapshot.runtimeId;
+          this.queue = this.queue.catch(() => undefined).then(() => this.syncActivityLoop(true));
+          void this.queue.catch(() => undefined);
+        }),
+        this.context.interactions.onPetClick(() => this.openReaction()),
+        this.context.interactions.onPetContextMenu(() => this.openInbox()),
+      );
+      const pending = buffered.map(event => this.receive(event));
+      loading = false;
+      await Promise.all(pending);
+      await this.syncActivityLoop();
+      this.emit();
+      return this;
+    } catch (caught) { this.dispose(); throw caught; }
   }
 
   dispose() {
+    this.disposed = true;
+    void this.context.pet.setActivityLoop?.(null).catch(() => undefined);
+    void this.context.pet.speak("", { durationMs: 0 }).catch(() => undefined);
     for (const dispose of this.disposers.splice(0)) dispose();
     this.listeners.clear();
   }
@@ -55,14 +90,61 @@ export class AgentActivityController {
     return this.events.find((event) => event.id === this.reactionEventId);
   }
 
-  async receive(event: AgentEvent) {
-    if (this.events.some((candidate) => candidate.id === event.id)) return;
-    this.events = [event, ...this.events].slice(0, 100);
-    if (REACTION_TYPES.has(event.type)) {
-      this.reactionEventId = event.id;
-      await this.present(event);
+  receive(event: AgentEvent): Promise<void> {
+    this.queue = this.queue.catch(() => undefined).then(async () => {
+      if (this.disposed || this.seenEventIds.has(event.id) || this.events.some(candidate => candidate.id === event.id)) return;
+      this.rememberEvent(event.id);
+      if (REACTION_TYPES.has(event.type)) this.events = [event, ...this.events].slice(0, 100);
+      const current = this.updateSession(event);
+      if (current && REACTION_TYPES.has(event.type)) {
+        this.reactionEventId = event.id;
+        await this.changeActivityLoop(null);
+        await this.present(event);
+      } else if (current && event.type === "working") {
+        await this.context.pet.speak(`${sourceLabel(event.source)} · ${(event.summary ?? "正在处理任务").slice(0, 96)}`, { durationMs: 0 });
+      } else if (current && event.type === "session-ended") {
+        await this.context.pet.speak(event.summary ?? "任务已中断", { durationMs: 3200 });
+      }
+      await this.syncActivityLoop(current && event.type === "working");
+      this.emit();
+    });
+    return this.queue;
+  }
+
+  private rememberEvent(id: string) {
+    this.seenEventIds.add(id);
+    if (this.seenEventIds.size > 1000) this.seenEventIds.delete(this.seenEventIds.values().next().value!);
+  }
+
+  private updateSession(event: AgentEvent) {
+    if (event.metadata.test === true) return true;
+    const key = `${event.source}:${event.sessionId}`;
+    const previous = this.sessions.get(key);
+    const terminal = (type: AgentEvent["type"]) => ["turn-completed", "task-completed", "failed", "session-ended"].includes(type);
+    if (previous) {
+      if (event.receivedAt < previous.receivedAt) return false;
+      const sameTurn = event.metadata.turnId === previous.metadata.turnId;
+      if (!sameTurn && event.type !== "working" && event.type !== "session-started" && event.metadata.hookEvent !== "SessionEnd") return false;
+      if (sameTurn && terminal(previous.type) && event.type === "working") return false;
     }
-    this.emit();
+    this.sessions.set(key, event);
+    return true;
+  }
+
+  private async changeActivityLoop(action: string | null, force = false) {
+    if (this.disposed || (!force && this.loopAction === action)) return;
+    if (!this.context.pet.setActivityLoop) return;
+    const result = await this.context.pet.setActivityLoop(action);
+    if (result.accepted) this.loopAction = action;
+  }
+
+  private async syncActivityLoop(force = false) {
+    if (this.disposed) return;
+    if (![...this.sessions.values()].some(event => event.type === "working")) { await this.changeActivityLoop(null, force); return; }
+    const snapshot = await this.context.pet.getSnapshot();
+    this.runtimeId = snapshot.runtimeId;
+    const action = ["working", "dig", "digging"].find(candidate => snapshot.availableActions.includes(candidate));
+    if (action) await this.changeActivityLoop(action, force);
   }
 
   async acknowledge(id: string) {
@@ -74,7 +156,7 @@ export class AgentActivityController {
   async open(id: string) {
     const event = this.events.find((candidate) => candidate.id === id);
     if (!event) return;
-    await this.context.integrations.openAgentSession(event);
+    if (event.metadata.test !== true) await this.context.integrations.openAgentSession(event);
     const updated = await this.context.events.acknowledge(event.id, { opened: true });
     if (updated) this.replace(updated);
   }

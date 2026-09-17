@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, codex/public-readiness]
   pull_request:
 
 permissions:
@@ -10,7 +10,8 @@ permissions:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # Generated-image foreground extraction uses Apple Vision on macOS 14+.
+    runs-on: macos-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -20,3 +21,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+
+  portable-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check:public
+      - run: npm run typecheck
+      - run: npx vitest run packages/pixel-art packages/schema packages/state-engine packages/runtime-core packages/runtime-react packages/plugin-sdk packages/design-core

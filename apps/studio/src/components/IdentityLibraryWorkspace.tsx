@@ -1,4 +1,6 @@
-import { Check, FolderPlus, Images, Plus, UploadSimple } from "@phosphor-icons/react";
+import { Button, Input, TextArea } from "@petlord/ui";
+import { CreateEntityDialog } from "./CreateEntityDialog";
+import { Check, FolderPlus, Images, UploadSimple } from "@phosphor-icons/react";
 import type { StudioController } from "../hooks/useStudioController";
 import { useIdentityLibrary } from "../hooks/useIdentityLibrary";
 import { PreviewableImage, PreviewableImageGroup } from "./PreviewableImage";
@@ -10,10 +12,7 @@ export function IdentityLibraryWorkspace({ studio }: { studio: StudioController 
     <main className="page-workspace identity-library-workspace">
       <header className="page-heading identity-library-heading">
         <div><span>形象</span><h1>管理身份参考。</h1><p>上传实拍素材并维护稳定特征。</p></div>
-        <form className="identity-create-form" onSubmit={controller.submitNewIdentity}>
-          <input value={controller.newIdentityName} onChange={(event) => controller.setNewIdentityName(event.target.value)} placeholder="新形象名称，例如 Lottery" aria-label="新形象名称" />
-          <button className="primary-button" type="submit" disabled={!controller.newIdentityName.trim()}><Plus size={15} weight="bold" />新增形象</button>
-        </form>
+        <CreateEntityDialog label="新增形象" title="新增形象" description="先给形象起名，再添加实拍参考与稳定特征。" fieldLabel="形象名称" placeholder="例如：彩票" onCreate={studio.createIdentityProfile} />
       </header>
       <div className="identity-library-layout">
         <aside className="identity-profile-list">
@@ -34,19 +33,19 @@ export function IdentityLibraryWorkspace({ studio }: { studio: StudioController 
         </aside>
         {identity ? (
           <section className="identity-profile-editor">
-            <header><div><span>身份档案</span><h2>{identity.name}</h2></div><button className="secondary-button" type="button" onClick={() => studio.setActiveArea("orders")}><FolderPlus size={15} />用它创建项目</button></header>
+            <header><div><span>身份档案</span><h2>{identity.name}</h2></div><Button type="default" className="secondary-button" htmlType="button" onClick={() => studio.setActiveArea("orders")}><FolderPlus size={15} />用它创建项目</Button></header>
             <div className="identity-editor-grid">
               <div className="identity-reference-editor">
                 <div className="section-title"><h3>实拍参考素材</h3><span>{identity.referenceArtifacts.length} 份</span></div>
                 <PreviewableImageGroup><div className="reference-grid">
-                  {identity.referenceArtifacts.map((artifact) => <figure className="reference-tile checkerboard" key={artifact.id}><PreviewableImage src={artifact.uri} alt={artifact.label ?? "实拍身份参考"} /><figcaption>{artifact.label}</figcaption></figure>)}
+                  {identity.referenceArtifacts.map((artifact) => <figure className="reference-tile checkerboard" key={artifact.id}><PreviewableImage nativePixel={artifact.nativePixel} src={artifact.uri} alt={artifact.label ?? "实拍身份参考"} /><figcaption>{artifact.label}</figcaption></figure>)}
                   <button className="upload-tile" type="button" onClick={() => studio.referenceInput.current?.click()}><UploadSimple size={25} weight="thin" /><strong>添加图片</strong></button>
                   <input ref={studio.referenceInput} type="file" accept="image/*" multiple hidden onChange={(event) => { studio.uploadReferences(event.target.files); event.target.value = ""; }} />
                 </div></PreviewableImageGroup>
               </div>
               <aside className="identity-definition-panel">
-                <label><span>形象名称</span><input value={identity.name} onChange={(event) => studio.updateIdentityProfile({ name: event.target.value })} /></label>
-                <label><span>补充识别特征（可选）</span><textarea rows={8} value={identity.identityPrompt} onChange={(event) => studio.updateIdentityProfile({ identityPrompt: event.target.value })} /></label>
+                <label><span>形象名称</span><Input value={identity.name} onChange={(event) => studio.updateIdentityProfile({ name: event.target.value })} /></label>
+                <label><span>补充识别特征（可选）</span><TextArea rows={8} value={identity.identityPrompt} onChange={(event) => studio.updateIdentityProfile({ identityPrompt: event.target.value })} /></label>
               </aside>
             </div>
           </section>

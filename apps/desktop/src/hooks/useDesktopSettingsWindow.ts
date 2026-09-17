@@ -5,7 +5,7 @@ import { useDesktopPetPackage } from "./useDesktopPetPackage";
 import { materializePackageManifest } from "./useDesktopPetPackage";
 import { useDesktopSettings } from "./useDesktopSettings";
 
-export type SettingsSection = "pets" | "behavior" | "plugins";
+export type SettingsSection = "pets" | "behavior" | "plugins" | "agent";
 
 function allPermissionsGranted(declaration: PluginDeclaration, grants: Record<string, PluginPermission[]>) {
   const granted = new Set(grants[declaration.id] ?? []);
@@ -18,6 +18,7 @@ export function useDesktopSettingsWindow() {
   const agentIntegrations = useAgentIntegrations();
   const [section, setSection] = useState<SettingsSection>("pets");
   const [importTargetKey, setImportTargetKey] = useState("new");
+  const [editError, setEditError] = useState<string>();
   const plugins = useMemo(() => petPackages.manifest?.plugins ?? [], [petPackages.manifest?.plugins]);
   const pendingManifest = useMemo(() => petPackages.pendingImport ? materializePackageManifest(petPackages.pendingImport.bundle) : undefined, [petPackages.pendingImport]);
 
@@ -49,6 +50,15 @@ export function useDesktopSettingsWindow() {
       : { mode: "replace", targetKey: importTargetKey });
   }
 
+  async function editInstalledPackage(key: string) {
+    setEditError(undefined);
+    try {
+      await window.petLordDesktop?.editPackage(key);
+    } catch (caught) {
+      setEditError(caught instanceof Error ? caught.message : "无法打开这个宠物的项目。");
+    }
+  }
+
   return {
     petPackages,
     settings,
@@ -63,6 +73,8 @@ export function useDesktopSettingsWindow() {
     importTargetKey,
     setImportTargetKey,
     confirmImport,
+    editInstalledPackage,
+    editError,
     close: () => window.petLordDesktop?.hideSettings(),
     showPet: () => window.petLordDesktop?.showPet(),
   };

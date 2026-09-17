@@ -11,6 +11,7 @@ import {
   type GeneratedMedia,
   type PersistentGenerationJob,
 } from "@petlord/generation";
+import { providerModelSelection } from "./providerModelSelection";
 import { toast } from "sonner";
 import { projectTemplates } from "../projectTemplates";
 import type { StyleProfile } from "../styleLibrary";
@@ -88,8 +89,8 @@ export function useStyleExperimentLab(studio: StudioController, profile?: StyleP
     durationSeconds: 4,
     ratio: "1:1" as const,
   }), [studio.project.generationSettings]);
-  const imageEstimate = estimateImageGenerationCost(imageSettings.imageModel, candidateCount);
-  const videoEstimate = estimateVideoGenerationCost({ model: videoSettings.videoModel, resolution: "480p", durationMode: "fixed", durationSeconds: 4 });
+  const imageEstimate = estimateImageGenerationCost(imageSettings.imageModel, candidateCount, providerModelSelection(studio.generationProviders.snapshot, "image", imageSettings.imageProviderId));
+  const videoEstimate = estimateVideoGenerationCost({ model: videoSettings.videoModel, models: providerModelSelection(studio.generationProviders.snapshot, "video", videoSettings.videoProviderId), resolution: "480p", durationMode: "fixed", durationSeconds: 4 });
   const usedCny = committedCost(jobs);
   const budgetCny = profile?.experimentBudgetCny ?? 30;
   const remainingCny = Math.max(0, budgetCny - usedCny);
@@ -127,7 +128,8 @@ export function useStyleExperimentLab(studio: StudioController, profile?: StyleP
   }) : "";
 
   async function generateImageTest() {
-    if (!profile || !identity || references.length === 0 || !imageEstimate || imageBusy) return;
+    if (!profile || !identity || references.length === 0 || imageBusy) return;
+    if (!imageEstimate) { toast.error("请在模型服务中补充此图片模型的预估费用，再生成。"); return; }
     if (imageEstimate.maximumCny > remainingCny) {
       toast.error(`风格实验预算不足：剩余 ¥${remainingCny.toFixed(2)}，本次最高 ¥${imageEstimate.maximumCny.toFixed(2)}。`);
       return;
@@ -157,7 +159,8 @@ export function useStyleExperimentLab(studio: StudioController, profile?: StyleP
   }
 
   async function generateVideoTest() {
-    if (!profile || !identity || !selectedImageUri || !videoEstimate || videoBusy) return;
+    if (!profile || !identity || !selectedImageUri || videoBusy) return;
+    if (!videoEstimate) { toast.error("请在模型服务中补充此视频模型的预估费用，再生成。"); return; }
     if (videoEstimate.maximumCny > remainingCny) {
       toast.error(`风格实验预算不足：剩余 ¥${remainingCny.toFixed(2)}，本次最高 ¥${videoEstimate.maximumCny.toFixed(2)}。`);
       return;

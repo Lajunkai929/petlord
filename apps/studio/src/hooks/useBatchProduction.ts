@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { estimateImageGenerationCost, estimateVideoGenerationCost, type CostEstimate } from "@petlord/generation";
+import { estimateImageGenerationCost, estimateVideoGenerationCost, type CostEstimate, type GenerationProvidersSnapshot } from "@petlord/generation";
 import type { CharacterProject } from "@petlord/schema";
 import { resolveTransitionSourceArtifact } from "@petlord/state-engine";
+import { providerModelSelection } from "./providerModelSelection";
 import { summarizeGenerationBudget } from "../orderOperations";
 
 export type BatchAction = "generate-state" | "generate-transition" | "transparentize" | "approve";
@@ -13,6 +14,7 @@ export interface BatchProductionItem {
   label: string;
   detail: string;
   cost: CostEstimate | null;
+  unknownPrice: boolean;
 }
 
 interface BatchActions {
@@ -22,9 +24,9 @@ interface BatchActions {
   approve: (transitionId: string) => void;
 }
 
-export function buildBatchProductionItems(project: CharacterProject): BatchProductionItem[] {
+export function buildBatchProductionItems(project: CharacterProject, snapshot?: GenerationProvidersSnapshot | null): BatchProductionItem[] {
   const hasIdentityReferences = project.referenceArtifactIds.some((id) => project.artifacts.some((artifact) => artifact.id === id));
-  const stateCost = estimateImageGenerationCost(project.generationSettings.imageModel, project.generationSettings.imageCandidateCount);
+  const stateCost = estimateImageGenerationCost(project.generationSettings.imageModel, project.generationSettings.imageCandidateCount, providerModelSelection(snapshot, "image", project.generationSettings.imageProviderId));
   const stateItems: BatchProductionItem[] = hasIdentityReferences ? project.logicalStates.filter((state) => !state.referenceArtifactId).map((state) => ({
     key: `generate-state:${state.id}`,
     action: "generate-state",
@@ -32,23 +34,27 @@ export function buildBatchProductionItems(project: CharacterProject): BatchProdu
     label: state.label,
     detail: `生成 ${project.generationSettings.imageCandidateCount} 张权威参考候选`,
     cost: stateCost,
+    unknownPrice: stateCost === null,
   })) : [];
   const transitionItems: BatchProductionItem[] = [];
   for (const transition of project.transitions) {
     const video = project.artifacts.find((artifact) => artifact.id === transition.videoArtifactId);
     if (!transition.videoArtifactId && transition.targetDraftArtifactId && resolveTransitionSourceArtifact(project, transition.id)) {
+      const cost = estimateVideoGenerationCost({
+        model: project.generationSettings.videoModel,
+        models: providerModelSelection(snapshot, "video", project.generationSettings.videoProviderId),
+        resolution: project.generationSettings.videoResolution,
+        durationMode: transition.durationMode,
+        durationSeconds: transition.durationSeconds,
+      });
       transitionItems.push({
         key: `generate-transition:${transition.id}`,
         action: "generate-transition",
         entityId: transition.id,
         label: transition.label,
         detail: transition.durationMode === "smart" ? "生成透明过渡视频 · 智能时长" : `生成透明过渡视频 · ${transition.durationSeconds ?? 4} 秒`,
-        cost: estimateVideoGenerationCost({
-          model: project.generationSettings.videoModel,
-          resolution: project.generationSettings.videoResolution,
-          durationMode: transition.durationMode,
-          durationSeconds: transition.durationSeconds,
-        }),
+        cost,
+        unknownPrice: cost === null,
       });
       continue;
     }
@@ -60,6 +66,7 @@ export function buildBatchProductionItems(project: CharacterProject): BatchProdu
         label: transition.label,
         detail: "Apple Vision 本机抠图 · 保留普通原视频",
         cost: null,
+        unknownPrice: false,
       });
       continue;
     }
@@ -71,25 +78,27 @@ export function buildBatchProductionItems(project: CharacterProject): BatchProdu
         label: transition.label,
         detail: "批准当前视频与选帧 · 必须已人工预览",
         cost: null,
+        unknownPrice: false,
       });
     }
   }
   return [...stateItems, ...transitionItems];
 }
 
-export function useBatchProduction(project: CharacterProject, actions: BatchActions) {
+export function useBatchProduction(project: CharacterProject, actions: BatchActions, snapshot?: GenerationProvidersSnapshot | null) {
   const [open, setOpen] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState({ completed: 0, total: 0 });
   const [message, setMessage] = useState("");
-  const items = useMemo(() => buildBatchProductionItems(project), [project]);
+  const items = useMemo(() => buildBatchProductionItems(project, snapshot), [project, snapshot]);
 
   const selected = items.filter((item) => selectedKeys.includes(item.key));
   const cost = selected.reduce((sum, item) => ({
     minimumCny: sum.minimumCny + (item.cost?.minimumCny ?? 0),
     maximumCny: sum.maximumCny + (item.cost?.maximumCny ?? 0),
   }), { minimumCny: 0, maximumCny: 0 });
+  const unknownPrice = selected.some(item => item.unknownPrice);
   const budget = summarizeGenerationBudget(project);
   const budgetExceeded = cost.maximumCny > budget.remainingCny + 1e-9;
 
@@ -106,6 +115,10 @@ export function useBatchProduction(project: CharacterProject, actions: BatchActi
 
   async function execute() {
     if (running || selected.length === 0) return;
+    if (unknownPrice) {
+      setMessage("所选生成任务费用待配置，请在模型服务中补充模型预估费用。");
+      return;
+    }
     if (budgetExceeded) {
       setMessage(`预算保护已阻止执行：所选任务最高 ¥${cost.maximumCny.toFixed(2)}，剩余额度 ¥${budget.remainingCny.toFixed(2)}。`);
       return;
@@ -126,7 +139,7 @@ export function useBatchProduction(project: CharacterProject, actions: BatchActi
     setRunning(false);
   }
 
-  return { open, setOpen, items, selectedKeys, selected, cost, budget, budgetExceeded, running, progress, message, toggle, selectAction, execute };
+  return { open, setOpen, items, selectedKeys, selected, cost, unknownPrice, budget, budgetExceeded, running, progress, message, toggle, selectAction, execute };
 }
 
 export type BatchProductionController = ReturnType<typeof useBatchProduction>;

@@ -1,0 +1,16 @@
+{
+  "name": "@petlord/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./theme": "./src/theme.ts",
+    "./theme.css": "./src/theme.css"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "antd": "^6.6.2",
+    "@radix-ui/react-dialog": "^1.1.23"
+  }
+}

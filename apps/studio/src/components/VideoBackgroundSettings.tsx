@@ -1,3 +1,4 @@
+import { Button } from "@petlord/ui";
 import { Palette, Sparkle, SpinnerGap } from "@phosphor-icons/react";
 import type { VideoBackgroundSettingsController } from "../hooks/useVideoBackgroundSettings";
 
@@ -14,7 +15,7 @@ export function VideoBackgroundSettings({ controller }: { controller: VideoBackg
       <div className="video-background-current">
         <i style={{ "--video-key-color": controller.effectiveColor } as React.CSSProperties} />
         <span><small>当前生成底色</small><strong>{controller.effectiveColor}</strong></span>
-        {controller.settings.mode === "auto" && <button type="button" disabled={controller.analyzing} onClick={controller.recalculate}>{controller.analyzing ? <SpinnerGap className="spin" size={13} /> : <Sparkle size={13} weight="fill" />}{controller.analyzing ? "分析中" : "重新计算"}</button>}
+        {controller.settings.mode === "auto" && <Button type="default" htmlType="button" disabled={controller.analyzing} onClick={controller.recalculate}>{controller.analyzing ? <SpinnerGap className="spin" size={13} /> : <Sparkle size={13} weight="fill" />}{controller.analyzing ? "分析中" : "重新计算"}</Button>}
       </div>
       {controller.settings.mode === "manual" && (
         <div className="video-background-manual">

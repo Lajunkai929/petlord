@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { estimateImageGenerationCost, estimateVideoGenerationCost, type PersistentGenerationJob } from "@petlord/generation";
+import { estimateImageGenerationCost, estimateVideoGenerationCost, type PersistentGenerationJob, type GenerationProvidersSnapshot } from "@petlord/generation";
 import type { CharacterProject } from "@petlord/schema";
 import { resolveTransitionSourceArtifact } from "@petlord/state-engine";
+import { providerModelSelection } from "./providerModelSelection";
 import { summarizeGenerationBudget } from "../orderOperations";
 import { deleteWorkspaceState, readWorkspaceState, saveWorkspaceState } from "../workspaceApi";
 
@@ -40,11 +41,22 @@ export function findNextAutomaticApproval(project: CharacterProject) {
   return project.transitions.find((transition) => transition.status === "review" && transition.videoArtifactId);
 }
 
+export function estimateAutomaticProductionCost(project: CharacterProject, snapshot?: GenerationProvidersSnapshot | null) {
+  const missingStates = project.logicalStates.filter(state => !state.referenceArtifactId);
+  const missingTransitions = project.transitions.filter(transition => !transition.videoArtifactId);
+  const imageCost = estimateImageGenerationCost(project.generationSettings.imageModel, project.generationSettings.imageCandidateCount, providerModelSelection(snapshot, "image", project.generationSettings.imageProviderId));
+  return missingTransitions.reduce((sum, transition) => {
+    const estimate = estimateVideoGenerationCost({ model: project.generationSettings.videoModel, models: providerModelSelection(snapshot, "video", project.generationSettings.videoProviderId), resolution: project.generationSettings.videoResolution, durationMode: transition.durationMode, durationSeconds: transition.durationSeconds });
+    return { minimumCny: sum.minimumCny + (estimate?.minimumCny ?? 0), maximumCny: sum.maximumCny + (estimate?.maximumCny ?? 0), unknownPrice: sum.unknownPrice || estimate === null };
+  }, { minimumCny: (imageCost?.minimumCny ?? 0) * missingStates.length, maximumCny: (imageCost?.maximumCny ?? 0) * missingStates.length, unknownPrice: missingStates.length > 0 && imageCost === null });
+}
+
 export function useAutomaticProduction(
   project: CharacterProject,
   jobs: PersistentGenerationJob[],
   submissionBusy: boolean,
   actions: AutomaticProductionActions,
+  snapshot?: GenerationProvidersSnapshot | null,
 ) {
   const [open, setOpen] = useState(false);
   const [run, setRun] = useState<AutomaticProductionRun | undefined>();
@@ -55,23 +67,8 @@ export function useAutomaticProduction(
   const missingStates = project.logicalStates.filter((state) => !state.referenceArtifactId);
   const missingTransitions = project.transitions.filter((transition) => !transition.videoArtifactId);
   const pendingApprovals = project.transitions.filter((transition) => transition.status === "review" && transition.videoArtifactId);
-  const imageCost = estimateImageGenerationCost(project.generationSettings.imageModel, project.generationSettings.imageCandidateCount);
-  const estimatedCost = useMemo(() => {
-    const stateMinimum = (imageCost?.minimumCny ?? 0) * missingStates.length;
-    const stateMaximum = (imageCost?.maximumCny ?? 0) * missingStates.length;
-    return missingTransitions.reduce((sum, transition) => {
-      const estimate = estimateVideoGenerationCost({
-        model: project.generationSettings.videoModel,
-        resolution: project.generationSettings.videoResolution,
-        durationMode: transition.durationMode,
-        durationSeconds: transition.durationSeconds,
-      });
-      return {
-        minimumCny: sum.minimumCny + (estimate?.minimumCny ?? 0),
-        maximumCny: sum.maximumCny + (estimate?.maximumCny ?? 0),
-      };
-    }, { minimumCny: stateMinimum, maximumCny: stateMaximum });
-  }, [imageCost?.maximumCny, imageCost?.minimumCny, missingStates.length, missingTransitions, project.generationSettings.videoModel, project.generationSettings.videoResolution]);
+  const estimatedCost = useMemo(() => estimateAutomaticProductionCost(project, snapshot), [project, snapshot]);
+  const unknownPrice = estimatedCost.unknownPrice;
   const budgetExceeded = estimatedCost.maximumCny > budget.remainingCny + 1e-9;
   const total = project.logicalStates.length + project.transitions.length;
   const completed = project.logicalStates.filter((state) => state.referenceArtifactId).length
@@ -126,6 +123,7 @@ export function useAutomaticProduction(
           return;
         }
         if (!run.submittedStateIds.includes(nextState.id)) {
+          if (unknownPrice) { setRun(current => current ? { ...current, status: "failed", error: "生成费用待配置，请在模型服务中补充模型预估费用。" } : current); return; }
           setWorking(true);
           setRun((current) => current ? { ...current, submittedStateIds: [...current.submittedStateIds, nextState.id] } : current);
           try {
@@ -147,6 +145,7 @@ export function useAutomaticProduction(
         }
         const ready = Boolean(nextTransition.targetDraftArtifactId && resolveTransitionSourceArtifact(project, nextTransition.id));
         if (ready && !run.submittedTransitionIds.includes(nextTransition.id)) {
+          if (unknownPrice) { setRun(current => current ? { ...current, status: "failed", error: "生成费用待配置，请在模型服务中补充模型预估费用。" } : current); return; }
           setWorking(true);
           setRun((current) => current ? { ...current, submittedTransitionIds: [...current.submittedTransitionIds, nextTransition.id] } : current);
           try {
@@ -178,10 +177,10 @@ export function useAutomaticProduction(
       setRun((current) => current ? { ...current, status: "complete" } : current);
     };
     void advance();
-  }, [actions, jobs, project, run, submissionBusy, working]);
+  }, [actions, jobs, project, run, submissionBusy, working, unknownPrice]);
 
   function start() {
-    if (submissionBusy || !identityReady || budgetExceeded || total === 0) return;
+    if (submissionBusy || !identityReady || unknownPrice || budgetExceeded || total === 0) return;
     setRun({
       projectId: project.id,
       status: "running",
@@ -206,10 +205,11 @@ export function useAutomaticProduction(
           : "准备开始";
   const blockedReason = submissionBusy ? "当前有任务正在提交，请稍后开始自动制作。"
     : !identityReady ? "请先为全局形象上传至少一张实拍参考图。"
+    : unknownPrice ? "生成费用待配置，请在模型服务中补充模型预估费用。"
     : budgetExceeded ? "完整流程的最高预估超过项目剩余额度。"
       : total === 0 ? "空白项目还没有可制作的状态。" : undefined;
 
-  return { open, setOpen, run, working, budget, estimatedCost, budgetExceeded, identityReady, blockedReason, total, completed, stage, start, stop };
+  return { open, setOpen, run, working, budget, estimatedCost, unknownPrice, budgetExceeded, identityReady, blockedReason, total, completed, stage, start, stop };
 }
 
 export type AutomaticProductionController = ReturnType<typeof useAutomaticProduction>;

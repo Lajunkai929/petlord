@@ -9,7 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@petlord/design-core": "*",
     "@petlord/generation": "*",
+    "@petlord/pixel-art": "^0.1.0",
     "@petlord/runtime-react": "*",
     "@petlord/schema": "*",
     "@petlord/state-engine": "*",
@@ -19,7 +21,8 @@
     "antd": "^6.6.2",
     "react": "latest",
     "react-dom": "latest",
-    "sonner": "^2.0.8"
+    "sonner": "^2.0.8",
+    "@petlord/ui": "*"
   },
   "devDependencies": {
     "@types/react": "latest",

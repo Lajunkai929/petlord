@@ -1,0 +1,79 @@
+@import "./EntityDialogs.css";
+.provider-workspace { flex:1; width:min(100%,1180px); margin:0 auto; }
+.provider-workspace-heading { display:flex; align-items:center; justify-content:space-between; gap:24px; max-width:none; }
+.provider-workspace-heading p { max-width:650px; }
+.provider-loading { display:flex; gap:12px; align-items:center; }
+.provider-connection-list { margin-top:24px; }
+.provider-connection { display:flex; align-items:flex-start; gap:18px; }
+.provider-connection-icon, .provider-vendor-mark { display:grid; place-items:center; flex:0 0 46px; width:46px; }
+.provider-connection-main { flex:1; min-width:0; }
+.provider-connection-main header { display:flex; flex-wrap:wrap; align-items:center; gap:9px; }
+.provider-connection-main h2 { margin:0; }
+.provider-connection-main p { display:flex; gap:8px; margin:6px 0; }
+.provider-connection-main > code { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.provider-connection-models { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin-top:13px; }
+.provider-connection-models .ant-tag { max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+.provider-connection-actions { display:flex; flex-direction:column; align-items:flex-end; gap:18px; }
+.provider-connection-actions > label { display:flex; align-items:center; gap:9px; }
+.provider-connection-actions > div { display:flex; gap:3px; }
+.provider-tested { display:flex; align-items:center; gap:4px; }
+.provider-workspace-empty { text-align:center; }
+.provider-workspace-empty .ant-empty-image { display:none; }
+.provider-workspace-empty p { margin:10px 0 20px; }
+.provider-workspace-footnote { margin:25px 0 0; }
+.provider-config-dialog { width:min(660px,calc(100vw - 40px)); max-height:calc(100dvh - 60px); overflow:auto; }
+.provider-config-dialog.is-choosing { width:min(540px,calc(100vw - 40px)); }
+.provider-preset-list { display:flex; flex-direction:column; gap:9px; }
+.provider-preset-option { display:flex; align-items:center; gap:14px; text-align:left; cursor:pointer; }
+.provider-preset-option > span:nth-child(2) { flex:1; display:flex; flex-direction:column; gap:6px; }
+.provider-config-fields { display:grid; grid-template-columns:1.5fr 1fr; gap:20px 16px; }
+.provider-config-fields .is-wide { grid-column:1/-1; }
+.provider-field { display:flex; flex-direction:column; align-items:stretch; gap:7px; min-width:0; }
+.provider-purpose { display:flex; align-items:center; }
+.provider-model-tags, .provider-model-tags > .ant-select { width:100%; min-width:0; }
+.provider-model-pricing > div { display:flex; flex-direction:column; gap:5px; margin-bottom:13px; }
+.provider-model-pricing > label { display:flex; align-items:center; gap:9px; margin:8px 0; }
+.provider-model-pricing code { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.provider-model-pricing .ant-input-number { width:126px; }
+.provider-model-pricing > label > span { width:34px; white-space:nowrap; }
+.provider-enabled-field { display:flex; align-items:center; justify-content:space-between; }
+.provider-config-dialog form > .entity-dialog-footer { position:sticky; bottom:calc(-1 * var(--space-6)); margin:var(--space-3) calc(-1 * var(--space-6)) calc(-1 * var(--space-6)); z-index:2; }
+.provider-back-button { margin-right:auto; }
+.provider-delete-dialog { width:min(460px,calc(100vw - 40px)); }
+@media(max-width:800px) { .provider-connection { flex-wrap:wrap; } .provider-connection-actions { width:100%; flex-direction:row; align-items:center; justify-content:flex-end; } }
+/* Application appearance is layered below the shared component library; unlayered rules above own layout. */
+@layer petlord-application{
+ .provider-workspace{ background:var(--bg); }
+ .provider-loading{ padding:36px 0; color:var(--text-soft); }
+ .provider-connection-list{ border-top:1px solid var(--border); }
+ .provider-connection{ padding:26px 0; border-bottom:1px solid var(--border); }
+ .provider-connection-icon,
+.provider-vendor-mark{ height:46px; background:var(--accent-soft); color:var(--accent); border-radius:var(--radius-panel); font-size:var(--font-dialog); line-height:var(--line-dialog); font-weight:var(--weight-bold); }
+ .provider-connection-main h2{ font-size:var(--font-section); line-height:1.5; }
+ .provider-connection-main p{ color:var(--text-soft); font-size:var(--font-xs); line-height:var(--line-xs); }
+ .provider-connection-main > code{ color:var(--text-muted); font-size:var(--font-xs); line-height:var(--line-xs); }
+ .provider-connection-models{ color:var(--text-muted); font-size:var(--font-xs); line-height:var(--line-xs); }
+ .provider-connection-actions > label{ color:var(--text-soft); font-size:var(--font-xs); line-height:var(--line-xs); }
+ .provider-tested{ color:var(--accent); font-size:var(--font-xs); line-height:var(--line-xs); }
+ .provider-workspace-empty{ padding:70px 24px; border:1px dashed var(--border-strong); border-radius:var(--radius-panel); background:var(--surface); color:var(--accent); }
+ .provider-workspace-empty strong{ color:var(--text); font-size:var(--font-dialog); line-height:var(--line-dialog); }
+ .provider-workspace-empty p{ color:var(--text-soft); }
+ .provider-workspace-footnote{ color:var(--text-muted); font-size:var(--font-xs); line-height:1.7; }
+ .provider-preset-option{ padding:16px; border:1px solid var(--border); border-radius:var(--radius-control); background:var(--surface); color:var(--text); }
+ .provider-preset-option:hover{ background:var(--surface-soft); border-color:var(--border-strong); }
+ .provider-preset-option strong{ font-size:var(--font-body); line-height:var(--line-body); }
+ .provider-preset-option small{ color:var(--text-soft); font-size:var(--font-xs); line-height:var(--line-xs); }
+ .provider-preset-option > svg{ color:var(--text-muted); }
+ .provider-field > label,
+.provider-enabled-field > label{ color:var(--text); font-size:var(--font-sm); line-height:var(--line-sm); font-weight:var(--weight-semibold); }
+ .provider-field small,
+.provider-model-pricing small{ color:var(--text-muted); font-size:var(--font-xs); line-height:1.6; }
+ .provider-field-error{ color:var(--danger); font-size:var(--font-xs); line-height:1.6; }
+ .provider-purpose{ min-height:36px; }
+ .provider-model-pricing{ border-top:1px solid var(--border); padding-top:16px; }
+ .provider-model-pricing strong{ font-size:var(--font-sm); line-height:var(--line-sm); }
+ .provider-model-pricing > label{ color:var(--text-soft); }
+ .provider-model-pricing code{ font-size:var(--font-xs); line-height:var(--line-xs); }
+ .provider-model-pricing > label > span{ font-size:var(--font-xs); line-height:var(--line-xs); }
+ .provider-enabled-field{ padding:14px 0; border-top:1px solid var(--border); }
+ .provider-config-dialog form > .entity-dialog-footer{ padding:var(--space-4) var(--space-6); background:var(--surface); } }

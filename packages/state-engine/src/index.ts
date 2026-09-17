@@ -8,6 +8,7 @@ import {
   type InteractionRegion,
   type PetPackageManifest,
   type RuntimeTransition,
+  type RuntimePointerGaze,
   type TransitionTrigger,
 } from "@petlord/schema";
 
@@ -84,6 +85,7 @@ export function buildPetPackage(projectInput: CharacterProject): PetPackageManif
       label: variant.label,
       imageUri: image.uri,
       origin: variant.origin.kind,
+      ...(image.nativePixel ? {nativePixel: {width: image.nativePixel.width, height: image.nativePixel.height}} : {}),
     } as const;
   });
 
@@ -96,35 +98,46 @@ export function buildPetPackage(projectInput: CharacterProject): PetPackageManif
         : transition.endFrameSource === "source-frame"
           ? sourceVariant?.imageArtifactId
           : transition.extractedTailArtifactId;
-      if (!transition.toVariantId || !transition.videoArtifactId || !endArtifactId) {
+      if (!transition.toVariantId || (!transition.videoArtifactId && !transition.nativeAnimation) || !endArtifactId) {
         throw new PackageBuildError(`Approved transition ${transition.label} is incomplete.`);
       }
       if (!exportedVariantIds.has(transition.fromVariantId) || !exportedVariantIds.has(transition.toVariantId)) {
         throw new PackageBuildError(`Approved transition ${transition.label} points to a draft state.`);
       }
 
-      const video = artifacts.get(transition.videoArtifactId);
+      const video = transition.videoArtifactId ? artifacts.get(transition.videoArtifactId) : undefined;
       const tail = artifacts.get(endArtifactId);
       const target = project.variants.find((variant) => variant.id === transition.toVariantId);
-      if (!video || !tail || !target) {
+      if ((!video && !transition.nativeAnimation) || !tail || !target) {
         throw new PackageBuildError(`Approved transition ${transition.label} has missing artifacts.`);
       }
       if (target.imageArtifactId !== tail.id) {
         throw new PackageBuildError(`Target state for ${transition.label} does not match its selected end frame.`);
       }
 
+      if (transition.nativeAnimation) {
+        const source = sourceVariant ? artifacts.get(sourceVariant.imageArtifactId) : undefined;
+        const frames = transition.nativeAnimation.frames;
+        if (frames[0]?.imageArtifactId !== sourceVariant?.imageArtifactId || frames.at(-1)?.imageArtifactId !== target.imageArtifactId) throw new PackageBuildError(`Native first/last frames for ${transition.label} must match source/target stills.`);
+        for (const frame of frames) {
+          const image = artifacts.get(frame.imageArtifactId);
+          if (!image?.mimeType.startsWith("image/") || !image.nativePixel || !source?.nativePixel || image.nativePixel.width !== source.nativePixel.width || image.nativePixel.height !== source.nativePixel.height) throw new PackageBuildError(`Native frame ${frame.imageArtifactId} is missing or has incompatible image dimensions.`);
+        }
+      }
+
       return {
         id: transition.id,
         fromStateId: transition.fromVariantId,
         toStateId: transition.toVariantId,
-        videoUri: video.uri,
+        ...(video ? {videoUri: video.uri} : {}),
+        ...(transition.nativeAnimation ? {nativeAnimation: {frames: transition.nativeAnimation.frames.map(frame => ({imageUri: artifacts.get(frame.imageArtifactId)!.uri, durationMs: frame.durationMs}))}} : {}),
         tailFrameUri: tail.uri,
-        durationMs: transition.endFrameSource !== "video-frame"
+        durationMs: !transition.nativeAnimation && transition.endFrameSource !== "video-frame"
           ? transition.sourceVideoDurationMs ?? transition.durationMs
           : transition.durationMs,
         entryBlendMs: transition.entryBlendMs ?? 420,
         endFrameSource: transition.endFrameSource,
-        transparentVideo: video.hasAlpha ?? false,
+        transparentVideo: video?.hasAlpha ?? false,
         authorityBridge: transition.authorityBridge,
         idleRule: transition.idleRule,
         playback: transition.playback ?? defaultTransitionPlayback,
@@ -155,6 +168,14 @@ export function buildPetPackage(projectInput: CharacterProject): PetPackageManif
       const gazeVideo = state.pointerGaze?.videoArtifactId
         ? artifacts.get(state.pointerGaze.videoArtifactId)
         : undefined;
+      const nativeImageUris = state.pointerGaze?.nativeImageArtifactIds?.map(id => {
+        const image = artifacts.get(id);
+        const destinations = states.filter(variant => variant.logicalStateId === state.id);
+        if (!image || image.mimeType !== "image/png" || !image.nativePixel || destinations.some(variant => !variant.nativePixel || variant.nativePixel.width !== image.nativePixel!.width || variant.nativePixel.height !== image.nativePixel!.height)) {
+          throw new PackageBuildError(`Native gaze image ${id} must be a PNG matching every exported variant in ${state.label}.`);
+        }
+        return image.uri;
+      });
       return {
         id: state.id,
         label: state.label,
@@ -168,6 +189,7 @@ export function buildPetPackage(projectInput: CharacterProject): PetPackageManif
           activationRadius: state.pointerGaze.activationRadius,
           anchor: state.pointerGaze.anchor,
           videoUri: gazeVideo?.uri,
+          ...(nativeImageUris ? {nativeImageUris: nativeImageUris as NonNullable<RuntimePointerGaze["nativeImageUris"]>} : {}),
           durationMs: state.pointerGaze.durationMs,
           segmentStartMs: state.pointerGaze.segmentStartMs,
           segmentEndMs: state.pointerGaze.segmentEndMs,
@@ -179,7 +201,8 @@ export function buildPetPackage(projectInput: CharacterProject): PetPackageManif
     dragInteraction: (() => {
       if (!project.dragInteraction?.enabled) return undefined;
       const targetState = project.logicalStates.find((state) => state.id === project.dragInteraction?.targetLogicalStateId);
-      const targetVariant = approvedVariants.find((variant) => variant.id === targetState?.defaultVariantId)
+      const targetVariant = approvedVariants.find((variant) => variant.id === project.dragInteraction?.targetVariantId && variant.logicalStateId === targetState?.id)
+        ?? approvedVariants.find((variant) => variant.id === targetState?.defaultVariantId)
         ?? approvedVariants.find((variant) => variant.logicalStateId === targetState?.id);
       return targetVariant ? {
         enabled: true,
@@ -191,8 +214,7 @@ export function buildPetPackage(projectInput: CharacterProject): PetPackageManif
     })(),
     semanticActions: Object.fromEntries(
       project.logicalStates
-        .filter((state) => state.semanticKey)
-        .map((state) => [state.semanticKey as string, state.id]),
+        .flatMap((state) => [...new Set([state.semanticKey, ...(state.semanticAliases ?? [])].filter((key): key is string => Boolean(key)))].map(key => [key, state.id])),
     ),
     plugins: project.plugins,
   } satisfies PetPackageManifest;
@@ -280,12 +302,18 @@ export function findRuntimeTrigger(
   event: RuntimePointerEvent,
   point: NormalizedPoint,
 ): { transition: RuntimeTransition; trigger: TransitionTrigger } | null {
+  let matched: { transition: RuntimeTransition; trigger: TransitionTrigger } | null = null;
+  let smallestArea = Infinity;
   for (const transition of transitions) {
-    const trigger = transition.triggers.find((candidate) =>
-      candidate.enabled && candidate.event === event && pointIsInsideInteractionRegion(point, candidate.region));
-    if (trigger) return { transition, trigger };
+    for (const trigger of transition.triggers) {
+      if (!trigger.enabled || trigger.event !== event || !pointIsInsideInteractionRegion(point, trigger.region)) continue;
+      const region = trigger.region;
+      const area = region ? region.width * region.height * (region.shape === "ellipse" ? Math.PI / 4 : 1) : Infinity;
+      // A head/tail hotspot wins over a whole-body fallback; equal areas retain authored order.
+      if (!matched || area < smallestArea) { matched = { transition, trigger }; smallestArea = area; }
+    }
   }
-  return null;
+  return matched;
 }
 
 export function findNextRuntimeTimerTrigger(input: {

@@ -1,3 +1,4 @@
+import { collectRuntimeMediaUris } from "@petlord/schema";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,10 +40,7 @@ async function main() {
     throw new Error(`生成费用 ¥${actualCostCny.toFixed(4)} 超过项目上限 ¥${lotteryHiResProject.generationBudgetCny.toFixed(2)}`);
   }
   const manifest = buildPetPackage(lotteryHiResProject);
-  const uris = [...new Set([
-    ...manifest.states.map((state) => state.imageUri),
-    ...manifest.transitions.flatMap((transition) => [transition.videoUri, transition.tailFrameUri]),
-  ])];
+  const uris = collectRuntimeMediaUris(manifest);
   const media = new Map<string, string>();
   for (const uri of uris) media.set(uri, await materialize(uri));
 

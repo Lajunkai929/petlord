@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { configuredModelSchema, imageRequestSchema, parseImageResult, providerRequester, redactProviderError } from "./requests";
 import { normalizeArkImageRequest } from "../arkImageRequest";
 import type {
   GenerationProviderRuntime,
@@ -7,30 +8,8 @@ import type {
   StoredGenerationProviderConfiguration,
 } from "./types";
 
-const imageModels = new Set([
-  "doubao-seedream-5-0-260128",
-  "doubao-seedream-4-5-251128",
-  "doubao-seedream-4-0-250828",
-]);
-
-const videoModels = new Set([
-  "doubao-seedance-2-0-mini-260615",
-  "doubao-seedance-2-0-fast-260128",
-  "doubao-seedance-2-0-260128",
-  "doubao-seedance-2-5-260628",
-  "doubao-seedance-1-5-pro-251215",
-]);
-
-const imageRequestSchema = z.object({
-  model: z.string().refine((model) => imageModels.has(model), "Unsupported image model."),
-  prompt: z.string().min(1).max(20_000),
-  referenceImages: z.array(z.string().min(1)).max(10),
-  resolution: z.enum(["1K", "2K"]),
-  candidateCount: z.number().int().min(1).max(5),
-});
-
 const videoRequestSchema = z.object({
-  model: z.string().refine((model) => videoModels.has(model), "Unsupported video model."),
+  model: z.string().min(1),
   prompt: z.string().min(1).max(20_000),
   firstFrame: z.string().min(1),
   lastFrame: z.string().min(1),
@@ -63,38 +42,10 @@ function arkVideoContent(body: z.infer<typeof videoRequestSchema>) {
   ];
 }
 
-interface ArkErrorPayload {
-  error?: { message?: string };
-  message?: string;
-}
-
-function trimBaseUrl(baseUrl: string) {
-  return baseUrl.replace(/\/+$/, "");
-}
-
-export function createVolcengineArkProvider(configuration: StoredGenerationProviderConfiguration): GenerationProviderRuntime {
-  async function request(path: string, init?: RequestInit) {
-    const response = await fetch(`${trimBaseUrl(configuration.baseUrl)}${path}`, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${configuration.apiKey}`,
-        ...init?.headers,
-      },
-    });
-    const text = await response.text();
-    let payload: unknown;
-    try {
-      payload = JSON.parse(text);
-    } catch {
-      payload = { error: { message: text || `Volcengine Ark returned HTTP ${response.status}.` } };
-    }
-    if (!response.ok) {
-      const candidate = payload as ArkErrorPayload;
-      throw new Error(candidate.error?.message ?? candidate.message ?? `Volcengine Ark request failed with HTTP ${response.status}.`);
-    }
-    return payload;
-  }
+export function createVolcengineArkProvider(configuration: StoredGenerationProviderConfiguration, signal?: AbortSignal): GenerationProviderRuntime {
+  const request = providerRequester(configuration, signal);
+  const imageSchema = imageRequestSchema(configuration);
+  const videoSchema = videoRequestSchema.refine(body => configuredModelSchema(configuration).safeParse(body.model).success, { path: ["model"], message: "Model is not configured for this provider." });
 
   async function testConnection() {
     await request("/models");
@@ -106,11 +57,11 @@ export function createVolcengineArkProvider(configuration: StoredGenerationProvi
       type: configuration.type,
       capability: "image",
       validateRequest(requestBody) {
-        return imageRequestSchema.parse(requestBody);
+        return imageSchema.parse(requestBody);
       },
       testConnection,
       async generate(requestBody): Promise<ProviderImageResult> {
-        const body = imageRequestSchema.parse(requestBody);
+        const body = imageSchema.parse(requestBody);
         const arkBody = {
           model: body.model,
           prompt: body.prompt,
@@ -125,13 +76,7 @@ export function createVolcengineArkProvider(configuration: StoredGenerationProvi
           method: "POST",
           body: JSON.stringify(normalizeArkImageRequest(arkBody)),
         }) as { model?: string; data?: Array<{ url?: string; b64_json?: string }> };
-        return {
-          model: payload.model ?? body.model,
-          images: (payload.data ?? []).map((item) => ({
-            url: item.url,
-            dataUrl: item.b64_json ? `data:image/png;base64,${item.b64_json}` : undefined,
-          })),
-        };
+        return parseImageResult(payload.data, payload.model ?? body.model);
       },
     };
   }
@@ -141,11 +86,11 @@ export function createVolcengineArkProvider(configuration: StoredGenerationProvi
     type: configuration.type,
     capability: "video",
     validateRequest(requestBody) {
-      return videoRequestSchema.parse(requestBody);
+      return videoSchema.parse(requestBody);
     },
     testConnection,
     async submit(requestBody) {
-      const body = videoRequestSchema.parse(requestBody);
+      const body = videoSchema.parse(requestBody);
       const arkBody = {
         model: body.model,
         content: arkVideoContent(body),
@@ -185,7 +130,7 @@ export function createVolcengineArkProvider(configuration: StoredGenerationProvi
           ?? (typeof lastFrame === "string" ? lastFrame : lastFrame?.url)
           ?? payload.content?.image_url,
         completionTokens: payload.usage?.completion_tokens,
-        error: payload.error?.message,
+        error: payload.error?.message ? redactProviderError(payload.error.message, configuration.apiKey) : undefined,
       };
     },
   };

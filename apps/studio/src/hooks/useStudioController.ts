@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { executeStudioDesignCommand } from "../pixel/designCommand";
+import { hasDrawingDraft, useDrawingDraftStatus } from "../pixel/drawingDrafts";
+import { workspaceClient } from "../workspaceApi";
 import {
   defaultPointerGazeDirectionKeyframesMs,
   type Artifact,
@@ -34,7 +37,7 @@ import { ensureTransitionMediaVersions } from "../transitionMedia";
 import { calculateAutoChromaColor } from "../lib/chromaBackground";
 import { usePersistentGeneration } from "./usePersistentGeneration";
 import { useVideoBackgroundSettings } from "./useVideoBackgroundSettings";
-import { useProjectWorkspace } from "./useProjectWorkspace";
+import { activateProjectAfterPersist, useProjectWorkspace } from "./useProjectWorkspace";
 import {
   activateAuthorityReference,
   createBlankIdentityProfile,
@@ -59,7 +62,11 @@ import { useStyleLibrary } from "./useStyleLibrary";
 import { useProjectTemplateLibrary } from "./useProjectTemplateLibrary";
 import { readStudioRoute } from "../studioRoute";
 import { useStudioUrlState } from "./useStudioUrlState";
-import { applyGenerationContextSnapshot, resolveProjectGenerationContext } from "../generationContext";
+import { createPortableProjectSource, resolveProjectGenerationContext } from "../generationContext";
+import { applyProjectReferenceChange, projectWithResolvedReferences } from "../projectReferences";
+import type { ProjectReferenceRequest } from "../components/ProjectReferenceDialog";
+import { usePetLordTheme } from "@petlord/ui";
+import { providerModelSelection } from "./providerModelSelection";
 import { useGenerationProviders } from "./useGenerationProviders";
 
 const now = () => new Date().toISOString();
@@ -76,13 +83,31 @@ export function useStudioController() {
   const workspace = useProjectWorkspace(initialRoute.projectId);
   const appearance = useStudioAppearance();
   const { project, setProject } = workspace;
+  const designProjectRef = useRef(project);
+  designProjectRef.current = project;
+  const designPendingRef = useRef(false);
+  const [designBusy, setDesignBusy] = useState(false);
+  async function runDesignCommand(command: string, input: unknown) {
+    if (designPendingRef.current) throw new Error("请等待当前设计操作完成。");
+    designPendingRef.current = true;
+    setDesignBusy(true);
+    try {
+      return await executeStudioDesignCommand(command, input, {
+        persist: workspace.persistProject,
+        current: () => designProjectRef.current,
+        adopt: snapshot => workspaceClient.adopt("project", snapshot),
+        commit: next => { designProjectRef.current = next; setProject(next); },
+      });
+    } finally { designPendingRef.current = false; setDesignBusy(false); }
+  }
+  const drawingPending = useDrawingDraftStatus(project);
   const [activeArea, setActiveAreaState] = useState<StudioArea>(initialRoute.area);
   const [previewSessionRevision, setPreviewSessionRevision] = useState(0);
   const [selection, setSelectionState] = useState<StudioSelection>(initialRoute.selection ?? { kind: "state", id: "state-sitting" });
   const [mobileInspectorOpen, setMobileInspectorOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [previewTransitionId, setPreviewTransitionId] = useState<string | null>(null);
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const { theme, setTheme } = usePetLordTheme(window.petLordStudio);
   const [notice, setNotice] = useState("正在检查生成服务");
   const [taskCenterOpen, setTaskCenterOpen] = useState(false);
   const [graphLayoutRevision, setGraphLayoutRevision] = useState(0);
@@ -129,6 +154,11 @@ export function useStudioController() {
   }
 
   function setActiveArea(next: StudioArea) {
+    if ((next === "preview" || next === "publish") && hasDrawingDraft(project.id)) {
+      inform("请先保存绘图工作台中的画布或动画草稿。", "info");
+      setActiveAreaState("drawing");
+      return;
+    }
     if (next === "preview") {
       workspace.preparePreviewSnapshot();
       setPreviewSessionRevision((revision) => revision + 1);
@@ -138,6 +168,7 @@ export function useStudioController() {
 
   useStudioUrlState({
     project,
+    ready: workspace.hydrated,
     activeArea,
     selection,
     activateProject: workspace.activateProject,
@@ -145,13 +176,24 @@ export function useStudioController() {
     setSelection: setSelectionState,
   });
 
+  useEffect(() => window.petLordStudio?.onOpenProject?.(projectId => {
+    void activateProjectAfterPersist(projectId, {
+      persist: workspace.persistProject,
+      activate: workspace.activateProject,
+    }).then(() => {
+      setActiveArea("graph");
+      inform("已打开这个本机宠物的项目。", "success");
+    }).catch(caught => inform(caught instanceof Error ? caught.message : "无法打开关联项目。", "error"));
+  }), [workspace.persistProject, workspace.activateProject]);
+
   function updateProject(updater: (current: CharacterProject) => CharacterProject) {
     setProject((current) => ({ ...updater(current), updatedAt: now() }));
   }
 
   const styleLibrary = useStyleLibrary(project, workspace.projects, updateProject, inform);
   const generationContext = resolveProjectGenerationContext(project, workspace.identities, styleLibrary.profiles, styleLibrary.activeProfileId);
-  const resolvedProject = applyGenerationContextSnapshot(project, generationContext);
+  const resolvedProject = projectWithResolvedReferences(project, generationContext);
+  const exportSourceProject = createPortableProjectSource(project, generationContext);
   const templateLibrary = useProjectTemplateLibrary(project, inform);
   const videoBackgroundSettings = useVideoBackgroundSettings(project, updateProject, inform);
   const customerReview = useCustomerReview(project, updateProject, inform);
@@ -188,22 +230,22 @@ export function useStudioController() {
   }
 
   function createCustomerProject(input: NewOrderInput, duplicateCurrent = false) {
-    const identity = workspace.identities.find((candidate) => candidate.id === input.identityProfileId) ?? workspace.activeIdentity;
-    if (!identity) {
-      inform("请先在形象库创建一个宠物形象。", "error");
-      setActiveArea("identity");
-      return;
+    const identity = workspace.identities.find((candidate) => candidate.id === input.identityProfileId);
+    if (input.identityProfileId && !identity) {
+      inform("所选形象已不存在，请重新选择。", "error");
+      return false;
     }
-    const normalizedInput = { ...input, characterName: identity.name, identityProfileId: identity.id };
+    const normalizedInput = { ...input, characterName: identity?.name ?? input.characterName, identityProfileId: identity?.id };
     const next = duplicateCurrent
       ? duplicateProjectForOrder(project, normalizedInput, identity)
       : createBlankProject(normalizedInput, identity);
     if (!workspace.addProject(next)) {
       inform("无法保存新项目，请检查浏览器存储空间。", "error");
-      return;
+      return false;
     }
     setActiveArea("graph");
-    inform(`已基于“${identity.name}”创建风格项目“${next.name}”。`, "success");
+    inform(`已为“${identity?.name ?? input.characterName}”创建项目“${next.name}”。`, "success");
+    return true;
   }
 
   function createIdentityProfile(name: string) {
@@ -297,7 +339,7 @@ export function useStudioController() {
       project.variants.find((variant) => variant.id === sourceState?.defaultVariantId) ??
       project.variants.find((variant) => variant.logicalStateId === sourceStateId && variant.status === "approved");
     if (!sourceState || !targetState || !sourceVariant) {
-      inform("源状态还没有实际展示变体，不能作为视频起点。", "error");
+      inform("请先为起点状态添加并确认一张图片。", "error");
       return;
     }
     const duplicate = project.transitions.find(
@@ -310,19 +352,12 @@ export function useStudioController() {
     }
     const id = `transition-${crypto.randomUUID()}`;
     const isDragTarget = Boolean(project.dragInteraction?.enabled && project.dragInteraction.targetLogicalStateId === targetState.id);
-    const defaultTrigger: TransitionTrigger = targetState.semanticKey === "sleep"
-      ? {
-          id: `trigger-${crypto.randomUUID()}`,
-          event: "inactivity",
-          enabled: true,
-          timerDurationMs: 60_000,
-        }
-      : {
-          id: `trigger-${crypto.randomUUID()}`,
-          event: "double-click",
-          enabled: true,
-          region: { shape: "ellipse", x: 0.12, y: 0.12, width: 0.76, height: 0.76 },
-        };
+    const defaultTrigger: TransitionTrigger = {
+      id: `trigger-${crypto.randomUUID()}`,
+      event: "left-click",
+      enabled: true,
+      region: { shape: "ellipse", x: 0.12, y: 0.12, width: 0.76, height: 0.76 },
+    };
     updateProject((current) => ({
       ...current,
       transitions: [...current.transitions, {
@@ -348,10 +383,8 @@ export function useStudioController() {
     }));
     setSelection({ kind: "transition", id });
     inform(targetState.referenceArtifactId
-      ? targetState.semanticKey === "sleep"
-        ? "过渡线已建立，并默认设为 1 分钟无交互后进入睡觉。"
-        : "过渡线已建立，默认使用双击触发；现在可以继续配置并生成视频。"
-      : "过渡线已建立，但目标状态需要先生成权威参考图。", "success");
+      ? "过渡线已建立，默认使用左键单击触发；现在可以继续配置并生成视频。"
+      : "过渡线已建立，默认使用左键单击触发；请先为目标状态准备权威参考图。", "success");
   }
 
   function addIdleTransition(stateId: string) {
@@ -419,6 +452,7 @@ export function useStudioController() {
 
   function updateDragInteraction(dragInteraction?: DragInteraction) {
     updateProject((current) => {
+      if (dragInteraction && dragInteraction.targetLogicalStateId !== current.dragInteraction?.targetLogicalStateId) dragInteraction = { ...dragInteraction, targetVariantId: undefined };
       const targetStateId = dragInteraction?.enabled ? dragInteraction.targetLogicalStateId : undefined;
       if (!targetStateId) return { ...current, dragInteraction };
       return {
@@ -469,12 +503,13 @@ export function useStudioController() {
     const durationSeconds = 6;
     const estimate = estimateVideoGenerationCost({
       model: project.generationSettings.videoModel,
+      models: providerModelSelection(generationProviders.snapshot, "video", project.generationSettings.videoProviderId),
       resolution: project.generationSettings.videoResolution,
       durationMode: "fixed",
       durationSeconds,
     });
     if (!estimate) {
-      inform("当前视频模型没有可核验的价格，预算保护已阻止提交。", "error");
+      inform("请在模型服务中补充此视频模型的预估费用，再生成。", "error");
       return;
     }
     const budget = generationBudgetAllows(project, estimate.maximumCny);
@@ -522,6 +557,7 @@ export function useStudioController() {
       }, ...current.jobs],
     }));
     try {
+      await workspace.persistProject();
       const submitted = await submitTransitionJob({
         characterName: generationContext.characterName,
         jobId,
@@ -592,7 +628,7 @@ export function useStudioController() {
     if (!state) return;
     const references = generationContext.identityReferences.map((artifact) => artifact.uri);
     if (references.length === 0) {
-      inform("请先在“身份”页添加至少一张身份参考图。", "error");
+      inform("请先在“项目风格规则”中配置至少一张角色参考图。", "error");
       if (options?.throwOnFailure) throw new Error("缺少身份参考图");
       return;
     }
@@ -616,10 +652,11 @@ export function useStudioController() {
     const estimate = estimateImageGenerationCost(
       project.generationSettings.imageModel,
       project.generationSettings.imageCandidateCount,
+      providerModelSelection(generationProviders.snapshot, "image", project.generationSettings.imageProviderId),
     );
     if (!estimate) {
-      inform("当前图片模型没有可核验的价格，预算保护已阻止提交。", "error");
-      if (options?.throwOnFailure) throw new Error("当前图片模型没有可核验的价格");
+      inform("请在模型服务中补充此图片模型的预估费用，再生成。", "error");
+      if (options?.throwOnFailure) throw new Error("请在模型服务中补充此图片模型的预估费用");
       return;
     }
     const budget = generationBudgetAllows(project, estimate.maximumCny);
@@ -647,6 +684,7 @@ export function useStudioController() {
       }, ...current.jobs],
     }));
     try {
+      await workspace.persistProject();
       const submitted = await submitStateDraftJob({
         jobId,
         trigger: { projectId: project.id, entityType: "state", entityId: state.id, label: state.label },
@@ -1120,13 +1158,14 @@ export function useStudioController() {
     const jobId = crypto.randomUUID();
     const estimate = estimateVideoGenerationCost({
       model: project.generationSettings.videoModel,
+      models: providerModelSelection(generationProviders.snapshot, "video", project.generationSettings.videoProviderId),
       resolution: project.generationSettings.videoResolution,
       durationMode: transition.durationMode,
       durationSeconds: transition.durationSeconds,
     });
     if (!estimate) {
-      inform("当前视频模型没有可核验的价格，预算保护已阻止提交。", "error");
-      if (throwOnFailure) throw new Error("当前视频模型没有可核验的价格");
+      inform("请在模型服务中补充此视频模型的预估费用，再生成。", "error");
+      if (throwOnFailure) throw new Error("请在模型服务中补充此视频模型的预估费用");
       return;
     }
     const budget = generationBudgetAllows(project, estimate.maximumCny);
@@ -1162,6 +1201,7 @@ export function useStudioController() {
       } : candidate),
     }));
     try {
+      await workspace.persistProject();
       const submitted = await submitTransitionJob({
         characterName: generationContext.characterName,
         jobId,
@@ -1349,6 +1389,29 @@ export function useStudioController() {
     setNotice("过渡预览已关闭");
   }
 
+  async function saveProjectReferences(request: ProjectReferenceRequest) {
+    if (busy) throw new Error("请等待当前操作完成。");
+    const projectId = project.id;
+    setBusy(true);
+    try {
+      let change;
+      if (request.kind === "upload") {
+        if (!request.files.length || request.files.some(file => !file.type.startsWith("image/"))) throw new Error("请选择至少一张图片文件。");
+        const additions: Artifact[] = await Promise.all(request.files.map(async file => {
+          const stored = await importImageFile(file);
+          return { id: `artifact-reference-${crypto.randomUUID()}`, kind: "identity-reference", uri: stored.uri, mimeType: stored.mimeType, createdAt: now(), provenance: "user-upload", label: file.name };
+        }));
+        change = { kind: "upload" as const, artifacts: additions };
+      } else change = request;
+      if (designProjectRef.current.id !== projectId) throw new Error("项目已切换，请在目标项目中重新配置参考图。");
+      await workspace.persistProjectChange(current => {
+        if (current.id !== projectId) throw new Error("项目已切换，请重新配置参考图。");
+        return applyProjectReferenceChange(current, workspace.identities, change);
+      });
+      inform("项目角色参考图配置已保存。", "success");
+    } finally { setBusy(false); }
+  }
+
   async function uploadReferences(files: FileList | null) {
     if (!files?.length) return;
     setBusy(true);
@@ -1406,8 +1469,7 @@ export function useStudioController() {
 
   function toggleTheme() {
     const next = theme === "dark" ? "light" : "dark";
-    setTheme(next);
-    document.documentElement.dataset.theme = next;
+    void setTheme(next).catch(() => inform("主题保存失败，请重试。", "error"));
   }
 
   const previewTransitionData = project.transitions.find((transition) => transition.id === previewTransitionId);
@@ -1426,6 +1488,8 @@ export function useStudioController() {
         id: previewTransitionData.id,
         label: previewTransitionData.label,
         sourceUri: previewSourceArtifact.uri,
+      sourceNativePixel: previewSourceArtifact.nativePixel,
+      targetNativePixel: previewTargetArtifact.nativePixel,
         videoUri: previewVideoArtifact.uri,
         targetUri: previewTargetArtifact.uri,
         targetMode: previewTransitionData.endFrameSource,
@@ -1445,7 +1509,8 @@ export function useStudioController() {
   const previewing = Boolean(transitionPreview);
 
   return {
-    project: resolvedProject, projects: workspace.projects, identities: workspace.identities, activeIdentity: workspace.activeIdentity, workspaceStorageError: workspace.storageError,
+    runDesignCommand, drawingPending, designBusy,
+    project: resolvedProject, exportSourceProject, projects: workspace.projects, identities: workspace.identities, activeIdentity: workspace.activeIdentity, workspaceStorageError: workspace.storageError, pendingProjectChangeError: workspace.pendingProjectChangeError, retryPendingProjectChanges: workspace.retryPendingProjectChanges, workspaceStorageConflict: workspace.storageConflict, reloadWorkspace: workspace.reloadWorkspace, saveWorkspaceConflictCopy: workspace.saveConflictCopy, persistProject: workspace.persistProject,
     activeArea, previewSessionRevision, selection, mobileInspectorOpen, busy, previewing, theme, notice, apiConfigured, generationProviders, videoBackgroundSettings, customerReview, graphLayoutRevision, appearance, styleLibrary, templateLibrary,
     taskCenterOpen, referenceInput, projectJobs, activeJobs, allJobs, allActiveJobs, artifacts, transitionPreview,
     setActiveArea, setSelection, setMobileInspectorOpen, setTaskCenterOpen, updateProject, moveState, autoArrangeStates, updateGenerationSettings,
@@ -1453,7 +1518,7 @@ export function useStudioController() {
     addState, addIdleTransition, connectStates, updateStateDefinition, updateIdleScheduler, updatePointerGaze, updateDragInteraction, activatePointerGazeVideo, generatePointerGazeVideo, updateIdleRule, updateTransitionPrompt, updateTransitionDuration, updateTransitionTransparency, updateTransitionTransparencyProcessing, updateTransitionPlayback, createPingPongTransitionVersion, transparentizeExistingTransition, activateTransitionMediaVersion, updateTransitionEndFrameSource, updateTransitionAuthorityBridge, updateTransitionTriggers,
     updateImageCandidateCount,
     generateStateImage, uploadStateImage, activateStateReference, setInitialStateFromReference, setPreferredOutboundVariant, generateTargetDraft, generateTransition, uploadTransitionVideo,
-    selectTransitionFrame, approveTransition, previewTransition, closeTransitionPreview, uploadReferences, navigateToJob, toggleTheme,
+    selectTransitionFrame, approveTransition, previewTransition, closeTransitionPreview, uploadReferences, saveProjectReferences, navigateToJob, toggleTheme,
   };
 }
 

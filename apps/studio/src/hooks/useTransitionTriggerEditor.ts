@@ -28,7 +28,7 @@ export function useTransitionTriggerEditor(
     onChange(triggers.map((trigger) => trigger.id === id ? { ...trigger, ...next } : trigger));
   }
 
-  function add(event: TransitionTrigger["event"] = "inactivity") {
+  function add(event: TransitionTrigger["event"] = "left-click") {
     const next: TransitionTrigger = {
       id: `trigger-${crypto.randomUUID()}`,
       event,

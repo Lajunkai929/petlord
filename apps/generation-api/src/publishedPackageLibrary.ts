@@ -21,11 +21,15 @@ export function decodeAndVerifyPublishedPackage(contents: Uint8Array): PetPackag
     throw new Error("Published package must be between 1 byte and 224 MB.");
   }
   const input = Buffer.from(contents);
-  const decoded = input[0] === 0x1f && input[1] === 0x8b ? gunzipSync(input) : input;
-  const bundle = petPackageBundleSchema.parse(JSON.parse(decoded.toString("utf8")));
+  const decoded = input[0] === 0x1f && input[1] === 0x8b ? gunzipSync(input, {maxOutputLength:512*1024*1024}) : input;
+  const raw = JSON.parse(decoded.toString("utf8"));
+  const bundle = petPackageBundleSchema.parse(raw);
   if (bundle.bundleVersion === 2) {
-    if (!bundle.integrity || sha256(JSON.stringify(bundle.manifest)) !== bundle.integrity.manifestSha256) {
+    if (!bundle.integrity || sha256(JSON.stringify(raw.manifest)) !== bundle.integrity.manifestSha256) {
       throw new Error("Published package manifest failed its integrity check.");
+    }
+    if (raw.sourceProject !== undefined && sha256(JSON.stringify(raw.sourceProject)) !== bundle.integrity.sourceProjectSha256) {
+      throw new Error("Published package source project failed its integrity check.");
     }
     for (const [key, expectedHash] of Object.entries(bundle.integrity.assets)) {
       const dataUrl = bundle.assets[key];

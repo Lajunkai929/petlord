@@ -1,0 +1,13 @@
+import {expect,it} from 'vitest';
+import {PetRuntimeCore} from '@petlord/runtime-core';
+import {petPackageManifestSchema} from '@petlord/schema';
+import {createAgentActivityLoop} from './agentActivityLoop';
+function fixture(){
+ const states=['idle','dig','attention'];
+ const pairs=[['idle','dig'],['dig','idle'],['dig','dig'],['idle','attention'],['attention','idle']];
+ const manifest=petPackageManifestSchema.parse({manifestVersion:1,id:'test',name:'test',characterName:'Lottery',initialStateId:'idle',states:states.map(id=>({id,logicalStateId:id,label:id,imageUri:id+'.png',origin:'reference'})),logicalStates:states.map(id=>({id,label:id,variantIds:[id],idleScheduler:{enabled:false}})),transitions:pairs.map(([from,to])=>({id:from+'-'+to,fromStateId:from,toStateId:to,videoUri:'test.mp4',tailFrameUri:to+'.png',durationMs:100,authorityBridge:{mode:'hard-cut',durationMs:120},idleRule:from===to?{enabled:true,weight:1,cooldownMs:0}:undefined})),semanticActions:{working:'dig',attention:'attention',idle:'idle'},plugins:[]});
+ const core=new PetRuntimeCore(manifest);return{core,loop:createAgentActivityLoop(core,manifest)};
+}
+it('repeats working until stopped without looping a completion reaction',()=>{const{core,loop}=fixture();expect(loop.set('working').accepted).toBe(true);expect(core.activeTransition()?.id).toBe('idle-dig');core.finishVideo();expect(core.activeTransition()?.id).toBe('dig-dig');core.finishVideo();expect(core.activeTransition()?.id).toBe('dig-dig');loop.set(null);expect(core.getSnapshot().currentStateId).toBe('idle');expect(core.getSnapshot().phase).toBe('idle');core.performSemanticAction('attention');loop.set('working');expect(core.activeTransition()?.id).toBe('idle-attention');core.finishVideo();expect(core.activeTransition()?.id).toBe('attention-idle');core.finishVideo();expect(core.activeTransition()?.id).toBe('idle-dig');loop.dispose();});
+it('suspends during drag and rejects unavailable actions without changing the current loop',()=>{const{core,loop}=fixture();expect(loop.set('missing').accepted).toBe(false);loop.set('working');loop.suspend(true);core.jumpToState('attention');expect(core.activeTransition()).toBeUndefined();loop.suspend(false);expect(core.activeTransition()?.id).toBe('attention-idle');loop.dispose();});
+it('keeps a held pose when work completes and clears work only after drag returns',()=>{const{core,loop}=fixture();loop.set('working');core.finishVideo();loop.suspend(true);core.jumpToState('attention');loop.set(null);expect(core.getSnapshot().currentStateId).toBe('attention');core.jumpToState('dig');loop.suspend(false);expect(core.getSnapshot().currentStateId).toBe('idle');expect(core.getSnapshot().phase).toBe('idle');loop.dispose();});

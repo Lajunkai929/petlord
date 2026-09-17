@@ -17,7 +17,10 @@ function createBridge(): AgentEventBridge {
     ["codex", new Set()],
   ]);
   const emit = (event: AgentEvent) => {
-    memory.set(event.id, event);
+    if(!window.petLordDesktop){
+      memory.set(event.id,event);
+      if(memory.size>500){const expendable=[...memory.values()].find(item=>["working","session-started","session-ended"].includes(item.type));memory.delete(expendable?.id??memory.keys().next().value!);}
+    }
     for (const listener of listeners.get(event.source) ?? []) listener(event);
   };
   let unsubscribeDesktop: (() => void) | undefined;
@@ -30,9 +33,11 @@ function createBridge(): AgentEventBridge {
           : [...memory.values()]
               .filter((event) => !input?.source || event.source === input.source)
               .filter((event) => !input?.unreadOnly || !event.acknowledgedAt)
+              .filter((event) => !input?.notificationsOnly || ["needs-attention", "turn-completed", "task-completed", "failed"].includes(event.type))
               .sort((left, right) => right.receivedAt.localeCompare(left.receivedAt))
+              .filter((event,index,all)=>!input?.latestPerSession||all.findIndex(other=>other.source===event.source&&other.sessionId===event.sessionId)===index)
               .slice(0, input?.limit ?? 100);
-        for (const event of stored) memory.set(event.id, event);
+        if(!window.petLordDesktop)for (const event of stored) memory.set(event.id, event);
         return stored;
       },
       subscribe(source, listener) {

@@ -8,12 +8,19 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-000000?style=flat-square&amp;logo=apple&amp;logoColor=white" alt="macOS" />
-  <img src="https://img.shields.io/badge/Windows-0078D4?style=flat-square&amp;logo=windows11&amp;logoColor=white" alt="Windows" />
-  <img src="https://img.shields.io/badge/Linux-FCC624?style=flat-square&amp;logo=linux&amp;logoColor=black" alt="Linux" />
   <a href="../LICENSE"><img src="https://img.shields.io/badge/License-MIT-97C83E?style=flat-square" alt="MIT License" /></a>
 </p>
 
-<p align="center">用可复用的形象、风格与动作模板，批量创作可交互的桌面搭子。</p>
+<p align="center">画一只桌面搭子，给它自己的性格，让它陪你和编程 Agent 一起工作。</p>
+
+PetLord 把可编辑的像素绘画 Studio、可选的 AI 动画和独立桌面宠物放在一起。先免费使用内置原生像素宠物，再修改画稿、动作和互动方式。
+
+- **没有模型账户也能创作。** 原生像素帧、图层、调色板和动画时间线可离线使用，不产生生成费用。
+- **自己定义互动。** 把状态连接到点击、拖拽、鼠标方向、空闲和定时条件，预览后再应用到桌面。
+- **让宠物响应 Agent。** Codex 接入后可触发工作、完成和需要操作的动画；配置与 hooks 信任需要明确完成，任务活动留在本机。
+- **分享后仍可继续编辑。** `.petlord` 包可携带经过校验的可编辑源码，导入后继续修改。
+
+使用说明见[原生像素陪伴](pixel-companion.md)、[Agent 与 MCP 接入](agent-design.md)和[模型服务](model-services.md)。
 
 ## PetLord 提供什么
 
@@ -36,18 +43,32 @@ PetLord 提供两套可组合、可复用的创作能力：
 
 ## 本地运行
 
-PetLord 需要 Node.js 22.5 或更高版本。项目启动不需要预先配置 API Token。
+使用 Node.js 22.13 或更高版本，推荐 Node.js 24 LTS。启动项目和创作原生像素宠物不需要 API Token。
 
 ```bash
 git clone https://github.com/Lajunkai929/petlord.git
 cd petlord
-npm install
+npm ci
 npm run dev
 ```
 
-打开 `http://localhost:4310`，在状态图工具栏进入「模型与 Provider」。图片和视频 Provider 独立配置；凭据只保存在本机 `runtime-data/petlord.sqlite`，设置接口不会把凭据返回浏览器。每种能力都可以保存多个 Provider，并按项目选择。
+打开 `http://localhost:4310` 使用 Studio。开发服务运行后，下列命令会创建一份新的可编辑样例，不调用付费生成：
+
+```bash
+npm run design -- example lottery --endpoint http://127.0.0.1:4312
+```
+
+需要 AI 画稿时，从 Studio 左侧进入「模型」，分别添加图片和视频服务。凭据只保存在本机 `runtime-data/petlord.sqlite`，设置接口不会把凭据返回浏览器。生成使用所选服务，可能产生该服务的费用。
+
+集成桌面客户端自带 Studio、CLI 和 MCP。桌面构建入口与 Agent 接入流程见[设计协议说明](agent-design.md)。
+
+### 平台验证范围
+
+当前桌面及集成验证覆盖 **macOS arm64**。生成图片的前景提取使用 Apple Vision，需要 **macOS 14 或更新系统**；原生像素绘画、媒体导入和包导出不依赖 Vision。仓库提供 Windows 和 Linux 打包目标，端到端验证尚未完成。
 
 提交改动前运行 `npm run check`，它会依次执行类型检查、测试和所有工作区的生产构建。
+
+欢迎贡献代码和可复现的问题报告。附文件前请阅读[贡献指南](../CONTRIBUTING.md)和[公开发布隐私检查](public-release-privacy.md)。公开问题和分享包使用合成样例；不要附上 API Key、本机配置、任务内容或私人参考照片。
 
 ## 发布到桌面客户端
 

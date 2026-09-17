@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import {
   characterProjectSchema,
   identityProfileSchema,
@@ -15,7 +15,16 @@ import { lotteryStardewProject } from "../lotteryStardewProject";
 import { lotteryClearProject } from "../lotteryClearProject";
 import { approveProjectTransition } from "../transitionApproval";
 import { templateCharacterNamePrompt } from "@petlord/generation";
-import { listWorkspaceEntities, readWorkspaceState, saveWorkspaceEntity, saveWorkspaceState } from "../workspaceApi";
+import { listWorkspaceEntities, readWorkspaceState, saveWorkspaceEntity, saveWorkspaceState, workspaceClient, WorkspaceSaveError } from "../workspaceApi";
+import { mergeWorkspaceChanges, workspaceValuesEqual } from "../workspaceMerge";
+
+export async function activateProjectAfterPersist(projectId: string, adapter: {
+  persist(): Promise<unknown>;
+  activate(projectId: string): boolean;
+}) {
+  await adapter.persist();
+  if (!adapter.activate(projectId)) throw new Error("关联项目不存在或已经损坏。");
+}
 
 const legacyProjectKey = "petlord.v3.6.project";
 const workspaceKey = "petlord.v3.workspace.v1";
@@ -44,6 +53,8 @@ export interface ProjectSummary {
   approvedTransitionCount: number;
   transitionCount: number;
   thumbnail?: string;
+  importedPackage?: CharacterProject["importedPackage"];
+  thumbnailNative?: boolean;
   economics: OrderEconomics;
   deliveryProgress: { completed: number; total: number };
 }
@@ -61,7 +72,8 @@ function readProject(id: string) {
 
 function summary(project: CharacterProject): ProjectSummary {
   const initialVariant = project.variants.find((variant) => variant.id === project.initialVariantId) ?? project.variants[0];
-  const thumbnail = project.artifacts.find((artifact) => artifact.id === initialVariant?.imageArtifactId)?.uri;
+  const thumbnailArtifact = project.artifacts.find((artifact) => artifact.id === initialVariant?.imageArtifactId);
+  const thumbnail = thumbnailArtifact?.uri;
   return {
     id: project.id,
     name: project.name,
@@ -77,6 +89,8 @@ function summary(project: CharacterProject): ProjectSummary {
     approvedTransitionCount: project.transitions.filter((transition) => transition.status === "approved").length,
     transitionCount: project.transitions.length,
     thumbnail,
+    importedPackage: project.importedPackage,
+    thumbnailNative: Boolean(thumbnailArtifact?.nativePixel),
     economics: summarizeOrderEconomics(project),
     deliveryProgress: deliveryProgress(project),
   };
@@ -328,7 +342,8 @@ export function refreshBundledProject(project: CharacterProject) {
   });
 }
 
-function migrateProjectsAndIdentities(projects: CharacterProject[], storedIdentities: IdentityProfile[]) {
+export function migrateProjectsAndIdentities(projects: CharacterProject[], storedIdentities: IdentityProfile[]) {
+  const storedIdentityIds = new Set(storedIdentities.map((identity) => identity.id));
   const identities = storedIdentities.map((identity) => ({
     ...identity,
     identityPrompt: templateCharacterNamePrompt(identity.identityPrompt, identity.name),
@@ -336,9 +351,15 @@ function migrateProjectsAndIdentities(projects: CharacterProject[], storedIdenti
   const synthesized = new Map<string, IdentityProfile>();
   const migratedProjects = projects.map((sourceProject) => {
     const rawProject = normalizeProjectPromptTemplates(sourceProject);
+    // A project can own its references without creating a shared identity.
+    if (!rawProject.identityProfileId) return ensureAuthorityVariants(rawProject);
     let identity = rawProject.identityProfileId
       ? identities.find((candidate) => candidate.id === rawProject.identityProfileId)
       : undefined;
+    // Live shared references are authoritative; project snapshots may be stale.
+    if (identity && storedIdentityIds.has(identity.id)) {
+      return ensureAuthorityVariants(syncProjectIdentity(rawProject, identity));
+    }
     if (!identity) {
       const key = identityKey(rawProject);
       identity = synthesized.get(key) ?? identities.find((candidate) =>
@@ -417,12 +438,31 @@ function initializeWorkspace(preferredProjectId?: string) {
 
 export function useProjectWorkspace(preferredProjectId?: string) {
   const [initial] = useState(() => initializeWorkspace(preferredProjectId));
-  const [project, setProject] = useState<CharacterProject>(initial.project);
+  const [project, setProjectState] = useState<CharacterProject>(initial.project);
   const [projects, setProjects] = useState<ProjectSummary[]>(initial.summaries);
-  const [identities, setIdentities] = useState<IdentityProfile[]>(initial.identities);
+  const [identities, setIdentitiesState] = useState<IdentityProfile[]>(initial.identities);
   const [registry, setRegistry] = useState<WorkspaceRegistry>(initial.registry);
   const recordsRef = useRef(new Map(initial.records.map((record) => [record.id, record])));
+  const projectRef = useRef(project);
+  const identitiesRef = useRef(identities);
+  const refreshRef = useRef<() => Promise<void>>(async () => undefined);
+  const setProject = useCallback((action: SetStateAction<CharacterProject>) => {
+    const next = typeof action === "function" ? action(projectRef.current) : action;
+    projectRef.current = next;
+    recordsRef.current.set(next.id, next);
+    setProjectState(next);
+  }, []);
+  const setIdentities = useCallback((action: SetStateAction<IdentityProfile[]>) => {
+    const next = typeof action === "function" ? action(identitiesRef.current) : action;
+    identitiesRef.current = next;
+    setIdentitiesState(next);
+  }, []);
+  const [storageConflict, setStorageConflict] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const pendingProjectChanges = useRef(new Set<string>());
+  const failedProjectChanges = useRef(new Map<string, string>());
+  const [pendingProjectChangeError, setPendingProjectChangeError] = useState<string>();
+  const [projectSaveRevision, setProjectSaveRevision] = useState(0);
   const [storageError, setStorageError] = useState<string>();
   const activeIdentity = useMemo(
     () => identities.find((identity) => identity.id === registry.activeIdentityId) ?? identities[0],
@@ -448,16 +488,18 @@ export function useProjectWorkspace(preferredProjectId?: string) {
       const sourceProjects = validProjects.length > 0 ? validProjects : initial.records;
       const sourceIdentities = validIdentities.length > 0 ? validIdentities : initial.identities;
       const migrated = migrateProjectsAndIdentities(sourceProjects.map(refreshBundledProject), sourceIdentities);
-      const nextRegistry: WorkspaceRegistry = storedRegistry && migrated.projects.some((candidate) => candidate.id === storedRegistry.activeProjectId)
-        ? { ...storedRegistry, projectIds: migrated.projects.map((candidate) => candidate.id) }
-        : {
-            activeProjectId: preferredProjectId && migrated.projects.some((candidate) => candidate.id === preferredProjectId)
-              ? preferredProjectId
-              : migrated.projects[0].id,
-            activeIdentityId: migrated.projects[0].identityProfileId ?? migrated.identities[0]?.id,
-            projectIds: migrated.projects.map((candidate) => candidate.id),
-          };
-      const nextProject = migrated.projects.find((candidate) => candidate.id === nextRegistry.activeProjectId) ?? migrated.projects[0];
+      const preferredProject = migrated.projects.find(candidate => candidate.id === preferredProjectId);
+      const storedProject = migrated.projects.find(candidate => candidate.id === storedRegistry?.activeProjectId);
+      const nextProject = preferredProject ?? storedProject ?? migrated.projects[0];
+      const nextRegistry: WorkspaceRegistry = {
+        ...storedRegistry,
+        activeProjectId: nextProject.id,
+        activeIdentityId: preferredProject?.identityProfileId
+          ?? storedRegistry?.activeIdentityId
+          ?? nextProject.identityProfileId
+          ?? migrated.identities[0]?.id,
+        projectIds: migrated.projects.map((candidate) => candidate.id),
+      };
       recordsRef.current = new Map(migrated.projects.map((record) => [record.id, record]));
       setProjects(migrated.projects.map(summary));
       setIdentities(migrated.identities);
@@ -482,21 +524,42 @@ export function useProjectWorkspace(preferredProjectId?: string) {
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || pendingProjectChanges.current.has(project.id) || failedProjectChanges.current.has(project.id)) return;
     recordsRef.current.set(project.id, project);
     setRegistry((current) => ({ ...current, activeProjectId: project.id, projectIds: [...new Set([...current.projectIds, project.id])] }));
     setProjects((current) => [...current.filter((candidate) => candidate.id !== project.id), summary(project)]
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)));
     void saveWorkspaceEntity("project", project.id, project)
-      .then(() => setStorageError(undefined))
-      .catch((caught) => setStorageError(caught instanceof Error ? caught.message : "项目保存失败"));
-  }, [hydrated, project]);
+      .then((saved) => {
+        const current = projectRef.current;
+        if (current.id === project.id) {
+          const merged = mergeWorkspaceChanges(project, current, saved.data);
+          if (!merged.conflicts.length && !workspaceValuesEqual(current, merged.value)) setProject(merged.value);
+        }
+        setStorageError(undefined);
+        setStorageConflict(false);
+      })
+      .catch((caught) => {
+        setStorageError(caught instanceof Error ? caught.message : "项目保存失败");
+        setStorageConflict(caught instanceof WorkspaceSaveError && ["REVISION_CONFLICT", "NOT_FOUND"].includes(caught.code));
+      });
+  }, [hydrated, project, projectSaveRevision]);
 
   useEffect(() => {
     if (!hydrated) return;
     void Promise.all(identities.map((identity) => saveWorkspaceEntity("identity", identity.id, identity)))
-      .then(() => setStorageError(undefined))
-      .catch((caught) => setStorageError(caught instanceof Error ? caught.message : "形象库保存失败"));
+      .then((saved) => {
+        const current = identitiesRef.current;
+        const next = current.map(identity => {
+          const before = identities.find(candidate => candidate.id === identity.id);
+          const remote = saved.find(candidate => candidate.data.id === identity.id)?.data;
+          if (!before || !remote) return identity;
+          const merged = mergeWorkspaceChanges(before, identity, remote);
+          return merged.conflicts.length ? identity : merged.value;
+        });
+        if (!workspaceValuesEqual(current, next)) setIdentities(next);
+      })
+      .catch((caught) => { setStorageError(caught instanceof Error ? caught.message : "形象库保存失败"); setStorageConflict(caught instanceof WorkspaceSaveError && caught.code === "REVISION_CONFLICT"); });
   }, [hydrated, identities]);
 
   useEffect(() => {
@@ -504,6 +567,202 @@ export function useProjectWorkspace(preferredProjectId?: string) {
     void saveWorkspaceState("workspace-registry", registry)
       .catch((caught) => setStorageError(caught instanceof Error ? caught.message : "工作区状态保存失败"));
   }, [hydrated, registry]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    let disposed = false;
+    let running = false;
+    const refresh = async () => {
+      if (disposed || running || document.hidden) return;
+      running = true;
+      try {
+        const [remoteProjects, remoteIdentities] = await Promise.all([
+          workspaceClient.snapshots<unknown>("project"),
+          workspaceClient.snapshots<unknown>("identity"),
+        ]);
+        if (disposed) return;
+        let projectsChanged = false;
+        const remoteIds = new Set<string>();
+        for (const snapshot of remoteProjects) {
+          const parsed = characterProjectSchema.safeParse(snapshot.data);
+          if (!parsed.success) continue;
+          const remote = parsed.data;
+          remoteIds.add(remote.id);
+          const local = recordsRef.current.get(remote.id);
+          if (local && !workspaceClient.isClean("project", remote.id, local)) continue;
+          workspaceClient.adopt("project", { data: remote, revision: snapshot.revision });
+          if (!local || !workspaceValuesEqual(local, remote)) {
+            recordsRef.current.set(remote.id, remote);
+            projectsChanged = true;
+            if (projectRef.current.id === remote.id) setProject(remote);
+          }
+        }
+        for (const [id, local] of recordsRef.current) {
+          if (remoteIds.has(id) || !workspaceClient.isClean("project", id, local)) continue;
+          recordsRef.current.delete(id);
+          projectsChanged = true;
+          if (projectRef.current.id === id) {
+            const replacement = [...recordsRef.current.values()].find(item => remoteIds.has(item.id));
+            if (replacement) setProject(replacement);
+            else { setStorageError("当前项目已被其他窗口或 Agent 删除。本地画面仍保留，可以另存为副本。"); setStorageConflict(true); }
+          }
+        }
+        if (projectsChanged) {
+          const values = [...recordsRef.current.values()];
+          setProjects(values.map(summary).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+          setRegistry(current => ({ ...current, projectIds: values.map(p => p.id), activeProjectId: projectRef.current.id }));
+        }
+        const remoteIdentityIds = new Set(remoteIdentities.map(snapshot => (snapshot.data as {id?: string})?.id));
+        const nextIdentities = identitiesRef.current.filter(identity => remoteIdentityIds.has(identity.id) || !workspaceClient.isClean("identity", identity.id, identity));
+        let identitiesChanged = nextIdentities.length !== identitiesRef.current.length;
+        for (const snapshot of remoteIdentities) {
+          const parsed = identityProfileSchema.safeParse(snapshot.data);
+          if (!parsed.success) continue;
+          const remote = parsed.data;
+          const index = nextIdentities.findIndex(i => i.id === remote.id);
+          const local = nextIdentities[index];
+          if (local && !workspaceClient.isClean("identity", remote.id, local)) continue;
+          workspaceClient.adopt("identity", { data: remote, revision: snapshot.revision });
+          if (!local || !workspaceValuesEqual(local, remote)) {
+            if (index < 0) nextIdentities.push(remote); else nextIdentities[index] = remote;
+            identitiesChanged = true;
+          }
+        }
+        if (identitiesChanged) setIdentities(nextIdentities);
+      } catch (caught) {
+        if (!disposed) setStorageError(caught instanceof Error ? caught.message : "无法同步工作区。");
+      } finally { running = false; }
+    };
+    refreshRef.current = refresh;
+    const notify = () => { void refresh(); };
+    const timer = window.setInterval(notify, 2000);
+    window.addEventListener("focus", notify);
+    window.addEventListener("petlord:workspace-changed", notify);
+    document.addEventListener("visibilitychange", notify);
+    return () => {
+      disposed = true; window.clearInterval(timer);
+      window.removeEventListener("focus", notify);
+      window.removeEventListener("petlord:workspace-changed", notify);
+      document.removeEventListener("visibilitychange", notify);
+    };
+  }, [hydrated, setProject, setIdentities]);
+
+  async function reloadWorkspace() {
+    try {
+      const currentId = projectRef.current.id;
+      await workspaceClient.settle("project", currentId);
+      const snapshots = await workspaceClient.snapshots<CharacterProject>("project");
+      const latest = snapshots.find(snapshot => snapshot.data.id === currentId) ?? snapshots[0];
+      if (!latest) throw new Error("服务器中没有可载入的项目，请将本地内容另存为副本。");
+      const data = characterProjectSchema.parse(latest.data);
+      workspaceClient.adopt("project", { data, revision: latest.revision });
+      setProject(data);
+      await Promise.all(identitiesRef.current.map(identity => workspaceClient.settle("identity", identity.id)));
+      const identitySnapshots = await workspaceClient.snapshots<IdentityProfile>("identity");
+      const identities = identitySnapshots.map(snapshot => {
+        const identity = identityProfileSchema.parse(snapshot.data);
+        workspaceClient.adopt("identity", { data: identity, revision: snapshot.revision });
+        return identity;
+      });
+      setIdentities(identities);
+      setStorageError(undefined); setStorageConflict(false);
+      await refreshRef.current();
+    } catch (caught) { setStorageError(caught instanceof Error ? caught.message : "重新载入失败。"); }
+  }
+
+  async function saveConflictCopy() {
+    const copy = { ...structuredClone(projectRef.current), id: `project-${crypto.randomUUID()}`, name: `${projectRef.current.name} · 本地副本`, updatedAt: new Date().toISOString() };
+    try {
+      await saveWorkspaceEntity("project", copy.id, copy);
+      setProject(copy);
+      setStorageError(undefined); setStorageConflict(false);
+    } catch (caught) { setStorageError(caught instanceof Error ? caught.message : "副本保存失败。"); }
+  }
+
+  async function persistProject() {
+    const current = projectRef.current;
+    if (pendingProjectChanges.current.has(current.id)) throw new Error("请等待项目配置保存完成。");
+    const saved = await saveWorkspaceEntity("project", current.id, current);
+    const merged = mergeWorkspaceChanges(current, projectRef.current, saved.data);
+    if (!merged.conflicts.length && !workspaceValuesEqual(projectRef.current, merged.value)) setProject(merged.value);
+    return saved;
+  }
+
+  function rememberProjectChangeFailure(projectId: string, caught: unknown) {
+    const name = recordsRef.current.get(projectId)?.name ?? projectId;
+    const message = caught instanceof Error ? caught.message : "项目保存失败";
+    failedProjectChanges.current.set(projectId, `“${name}”的并发修改尚未保存：${message}。修改已保留，请重试保存。`);
+    setPendingProjectChangeError([...failedProjectChanges.current.values()].join(" "));
+  }
+
+  function commitConfirmedProjectChange(projectId: string, before: CharacterProject, confirmed: CharacterProject) {
+    const current = recordsRef.current.get(projectId) ?? before;
+    const merged = mergeWorkspaceChanges(before, current, confirmed);
+    recordsRef.current.set(projectId, merged.value);
+    if (projectRef.current.id === projectId) setProject(merged.value);
+    setProjects(items => items.map(item => item.id === projectId ? summary(merged.value) : item));
+    if (merged.conflicts.length) throw new WorkspaceSaveError("REVISION_CONFLICT", "项目配置与同时发生的修改冲突；本地修改已保留，请核对后重试。", merged.conflicts);
+  }
+
+  /** Drain local differences for the originating project, even if another project is active. */
+  async function persistRemainingProjectChanges(projectId: string, confirmed: { data: CharacterProject; revision: number }) {
+    let saved = confirmed;
+    while (true) {
+      const current = recordsRef.current.get(projectId);
+      if (!current || workspaceValuesEqual(current, saved.data)) return saved;
+      const next = await saveWorkspaceEntity("project", projectId, current);
+      commitConfirmedProjectChange(projectId, current, next.data);
+      saved = next;
+    }
+  }
+
+  async function retryPendingProjectChanges() {
+    for (const projectId of [...failedProjectChanges.current.keys()]) {
+      if (pendingProjectChanges.current.has(projectId)) continue;
+      pendingProjectChanges.current.add(projectId);
+      try {
+        await workspaceClient.settle("project", projectId);
+        const confirmed = workspaceClient.confirmed<CharacterProject>("project", projectId);
+        if (!confirmed) throw new Error("找不到已确认的项目版本，请保留本地副本。");
+        // A manual retry releases the failed queue while retaining its confirmed revision.
+        // The usual revision checks and three-way conflict handling still apply.
+        workspaceClient.adopt("project", confirmed);
+        await persistRemainingProjectChanges(projectId, confirmed);
+        failedProjectChanges.current.delete(projectId);
+        setPendingProjectChangeError([...failedProjectChanges.current.values()].join(" ") || undefined);
+      } catch (caught) { rememberProjectChangeFailure(projectId, caught); }
+      finally {
+        pendingProjectChanges.current.delete(projectId);
+        if (projectRef.current.id === projectId) setProjectSaveRevision(revision => revision + 1);
+      }
+    }
+  }
+
+  /** Persist a dialog draft before exposing it; ordinary edits made during the PUT stay local. */
+  async function persistProjectChange(updater: (current: CharacterProject) => CharacterProject) {
+    const projectId = projectRef.current.id;
+    if (pendingProjectChanges.current.has(projectId)) throw new Error("请等待项目配置保存完成。");
+    if (failedProjectChanges.current.has(projectId)) throw new Error("请先使用“重试保存”保存这个项目保留的修改。");
+    pendingProjectChanges.current.add(projectId);
+    let committed = false;
+    try {
+      await workspaceClient.settle("project", projectId);
+      if (projectRef.current.id !== projectId) throw new Error("项目已切换，请重新配置参考图。");
+      const before = projectRef.current;
+      const desired = characterProjectSchema.parse({ ...updater(before), updatedAt: new Date().toISOString() });
+      if (desired.id !== projectId) throw new Error("项目配置不能更改项目 ID。");
+      const saved = await saveWorkspaceEntity("project", projectId, desired);
+      committed = true;
+      commitConfirmedProjectChange(projectId, before, saved.data);
+      return await persistRemainingProjectChanges(projectId, saved);
+    } catch (caught) {
+      if (committed) rememberProjectChangeFailure(projectId, caught);
+      throw caught;
+    } finally {
+      pendingProjectChanges.current.delete(projectId);
+      if (projectRef.current.id === projectId) setProjectSaveRevision(revision => revision + 1);
+    }
+  }
 
   function activateProject(id: string) {
     const stored = recordsRef.current.get(id);
@@ -559,7 +818,15 @@ export function useProjectWorkspace(preferredProjectId?: string) {
       .map((candidate) => syncProjectIdentity(candidate, updated));
     for (const linked of linkedProjects) {
       recordsRef.current.set(linked.id, linked);
-      void saveWorkspaceEntity("project", linked.id, linked);
+      void saveWorkspaceEntity("project", linked.id, linked).then(saved => {
+        const latest = recordsRef.current.get(linked.id);
+        if (!latest) return;
+        const rebased = mergeWorkspaceChanges(linked, latest, saved.data);
+        if (rebased.conflicts.length) throw new WorkspaceSaveError("REVISION_CONFLICT", "关联项目也有新的编辑，本地内容已保留。", rebased.conflicts);
+        recordsRef.current.set(linked.id, rebased.value);
+        setProjects(current => current.map(item => item.id === linked.id ? summary(rebased.value) : item));
+        if (projectRef.current.id === linked.id && !workspaceValuesEqual(projectRef.current, rebased.value)) setProject(rebased.value);
+      }).catch(caught => { setStorageError(caught instanceof Error ? caught.message : "关联项目保存失败"); setStorageConflict(caught instanceof WorkspaceSaveError && caught.code === "REVISION_CONFLICT"); });
     }
     if (linkedProjects.length > 0) {
       setProjects((current) => {
@@ -577,7 +844,14 @@ export function useProjectWorkspace(preferredProjectId?: string) {
     projects,
     identities,
     activeIdentity,
-    storageError,
+    storageError: pendingProjectChangeError ?? storageError,
+    pendingProjectChangeError,
+    retryPendingProjectChanges,
+    storageConflict,
+    reloadWorkspace,
+    saveConflictCopy,
+    persistProject,
+    persistProjectChange,
     hydrated,
     preparePreviewSnapshot,
     activateProject,

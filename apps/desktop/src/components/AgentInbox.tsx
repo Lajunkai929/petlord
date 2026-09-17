@@ -1,3 +1,4 @@
+import { Button } from "@petlord/ui";
 import { ArrowSquareOut, Check, Code, Robot, X } from "@phosphor-icons/react";
 import type { AgentEvent, AgentEventSource } from "@petlord/schema";
 
@@ -24,17 +25,17 @@ export function AgentInbox({
 }) {
   return (
     <aside className="agent-inbox">
-      <header><div><Robot size={17} weight="fill" /><span><strong>Agent 收件箱</strong><small>{events.filter((event) => !event.acknowledgedAt).length} 条未读</small></span></div><button type="button" onClick={onClose} aria-label="关闭 Agent 收件箱"><X size={15} /></button></header>
+      <header><div><Robot size={17} weight="fill" /><span><strong>Agent 收件箱</strong><small>{events.filter((event) => !event.acknowledgedAt).length} 条未读</small></span></div><Button type="text" size="small" icon={<X size={15} />} htmlType="button" onClick={onClose} aria-label="关闭 Agent 收件箱" /></header>
       <div className="agent-inbox-list">
         {events.length === 0 ? <div className="agent-inbox-empty"><Code size={25} /><span>还没有任务通知</span><small>可先发送一条测试事件。</small></div> : events.map((event) => (
           <article className={event.acknowledgedAt ? "is-read" : ""} key={event.id}>
             <i data-source={event.source}>{event.source === "claude" ? "C" : "X"}</i>
             <span><strong>{event.title}</strong><small>{sourceLabel(event.source)} · {timeLabel(event.receivedAt)}</small>{event.summary && <p>{event.summary}</p>}</span>
-            <div><button type="button" onClick={() => onOpen(event.id)}><ArrowSquareOut size={13} />打开</button>{!event.acknowledgedAt && <button type="button" onClick={() => onAcknowledge(event.id)} aria-label="标为已读"><Check size={13} /></button>}</div>
+            <div><Button type="default" size="small" icon={<ArrowSquareOut size={13} />} htmlType="button" onClick={() => onOpen(event.id)}>打开</Button>{!event.acknowledgedAt && <Button type="text" size="small" icon={<Check size={13} />} htmlType="button" onClick={() => onAcknowledge(event.id)} aria-label="标为已读" />}</div>
           </article>
         ))}
       </div>
-      <footer><span>发送测试</span><button type="button" onClick={() => onSimulate("claude")}>Claude</button><button type="button" onClick={() => onSimulate("codex")}>Codex</button></footer>
+      <footer><span>发送测试</span><Button type="default" size="small" htmlType="button" onClick={() => onSimulate("claude")}>Claude</Button><Button type="default" size="small" htmlType="button" onClick={() => onSimulate("codex")}>Codex</Button></footer>
     </aside>
   );
 }

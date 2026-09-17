@@ -1,3 +1,5 @@
+export * from "./nativePixel";
+import { nativePixelDocumentSchema } from "./nativePixel";
 import { z } from "zod";
 
 export const artifactKindSchema = z.enum([
@@ -8,7 +10,13 @@ export const artifactKindSchema = z.enum([
   "thumbnail",
 ]);
 
+export const nativePixelDimensionsSchema = z.object({ width: z.number().int().min(1).max(256), height: z.number().int().min(1).max(256) });
+export const nativePixelArtifactSchema = nativePixelDimensionsSchema.extend({ frameId: z.string().min(1) });
+export const nativeAnimationSchema = z.object({ frames: z.array(z.object({ imageArtifactId: z.string().min(1), durationMs: z.number().int().min(1).max(60_000) })).min(1).max(256) });
+export const runtimeNativeAnimationSchema = z.object({ frames: z.array(z.object({ imageUri: z.string().min(1), durationMs: z.number().int().min(1).max(60_000) })).min(1).max(256) });
+
 export const artifactSchema = z.object({
+  nativePixel: nativePixelArtifactSchema.optional(),
   id: z.string().min(1),
   kind: artifactKindSchema,
   uri: z.string().min(1),
@@ -55,6 +63,12 @@ const pointerGazeAnchorSchema = z.object({
   y: z.number().min(0).max(1),
 });
 
+/** Left, upper-left, up, upper-right, right, lower-right, down, lower-left. */
+const nativeGazeImagesSchema = z.tuple([
+  z.string().min(1), z.string().min(1), z.string().min(1), z.string().min(1),
+  z.string().min(1), z.string().min(1), z.string().min(1), z.string().min(1),
+]);
+
 export const pointerGazeSchema = z.object({
   enabled: z.boolean(),
   motionTarget: z.enum(["eyes", "head"]),
@@ -62,6 +76,7 @@ export const pointerGazeSchema = z.object({
   anchor: pointerGazeAnchorSchema.default(defaultPointerGazeAnchor),
   videoArtifactId: z.string().min(1).optional(),
   videoArtifactIds: z.array(z.string().min(1)).default([]),
+  nativeImageArtifactIds: nativeGazeImagesSchema.optional(),
   durationMs: z.number().int().positive().optional(),
   segmentStartMs: z.number().int().nonnegative().default(0),
   segmentEndMs: z.number().int().positive().optional(),
@@ -88,6 +103,7 @@ export const runtimePointerGazeSchema = z.object({
   activationRadius: z.number().min(0.6).max(3),
   anchor: pointerGazeAnchorSchema.default(defaultPointerGazeAnchor),
   videoUri: z.string().min(1).optional(),
+  nativeImageUris: nativeGazeImagesSchema.optional(),
   durationMs: z.number().int().positive().optional(),
   segmentStartMs: z.number().int().nonnegative().default(0),
   segmentEndMs: z.number().int().positive().optional(),
@@ -107,6 +123,7 @@ export const runtimePointerGazeSchema = z.object({
 export const dragInteractionSchema = z.object({
   enabled: z.boolean(),
   targetLogicalStateId: z.string().min(1),
+  targetVariantId: z.string().min(1).optional(),
   anchor: z.object({
     x: z.number().min(0).max(1),
     y: z.number().min(0).max(1),
@@ -117,12 +134,13 @@ export const dragInteractionSchema = z.object({
 
 export const runtimeDragInteractionSchema = dragInteractionSchema.extend({
   targetStateId: z.string().min(1),
-}).omit({ targetLogicalStateId: true });
+}).omit({ targetLogicalStateId: true, targetVariantId: true });
 
 export const logicalStateSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
   semanticKey: z.string().min(1).optional(),
+  semanticAliases: z.array(z.string().min(1)).optional(),
   description: z.string().default(""),
   position: z.object({ x: z.number(), y: z.number() }),
   defaultVariantId: z.string().optional(),
@@ -401,6 +419,7 @@ export const transitionMediaVersionSchema = z.object({
 });
 
 export const transitionSchema = z.object({
+  nativeAnimation: nativeAnimationSchema.optional(),
   id: z.string().min(1),
   label: z.string().min(1),
   fromVariantId: z.string().min(1),
@@ -451,6 +470,7 @@ export const generationJobSchema = z.object({
     estimatedMinCny: z.number().nonnegative(),
     estimatedMaxCny: z.number().nonnegative(),
     actualCny: z.number().nonnegative().optional(),
+    priorAttemptsReservedCny: z.number().nonnegative().optional(),
     basis: z.string().min(1),
   }).optional(),
 });
@@ -517,6 +537,9 @@ export const identityProfileSchema = z.object({
 });
 
 export const characterProjectSchema = z.object({
+  importedPackage: z.object({ fingerprint: z.string(), fileName: z.string(), source: z.enum(["runtime-reconstructed", "editable-source"]), warnings: z.array(z.string()) }).optional(),
+  productionRoute: z.enum(["generated", "native-pixel"]).optional().describe("Legacy source hint retained for compatibility. It does not restrict tools or media availability; native pixel metadata belongs to individual assets."),
+  pixelDocument: nativePixelDocumentSchema.optional(),
   schemaVersion: z.literal(1),
   id: z.string().min(1),
   name: z.string().min(1),
@@ -592,6 +615,7 @@ export const characterProjectSchema = z.object({
 });
 
 export const runtimeStateSchema = z.object({
+  nativePixel: nativePixelDimensionsSchema.optional(),
   id: z.string().min(1),
   logicalStateId: z.string().min(1),
   label: z.string().min(1),
@@ -600,10 +624,11 @@ export const runtimeStateSchema = z.object({
 });
 
 export const runtimeTransitionSchema = z.object({
+  nativeAnimation: runtimeNativeAnimationSchema.optional(),
   id: z.string().min(1),
   fromStateId: z.string().min(1),
   toStateId: z.string().min(1),
-  videoUri: z.string().min(1),
+  videoUri: z.string().min(1).optional(),
   tailFrameUri: z.string().min(1),
   durationMs: z.number().int().positive(),
   entryBlendMs: z.number().int().min(0).max(1000).optional(),
@@ -613,6 +638,13 @@ export const runtimeTransitionSchema = z.object({
   idleRule: idleTransitionRuleSchema.optional(),
   playback: transitionPlaybackSchema.optional(),
   triggers: z.array(transitionTriggerSchema).default([]),
+}).superRefine((transition, context) => {
+  if (!transition.videoUri && !transition.nativeAnimation) context.addIssue({code: "custom", message: "Transition requires videoUri or nativeAnimation."});
+  if (transition.nativeAnimation) {
+    if (transition.playback?.mode === "ping-pong") context.addIssue({code: "custom", path: ["playback", "mode"], message: "Author ping-pong motion as an explicit native frame sequence with forward playback."});
+    if (transition.durationMs !== transition.nativeAnimation.frames.reduce((sum, frame) => sum + frame.durationMs, 0)) context.addIssue({code: "custom", path: ["durationMs"], message: "Native duration must equal the sum of frame durations."});
+    if ((transition.playback?.segmentStartMs ?? 0) !== 0 || (transition.playback?.segmentEndMs !== undefined && transition.playback.segmentEndMs !== transition.durationMs)) context.addIssue({code: "custom", path: ["playback"], message: "Native playback uses the complete explicit frame sequence."});
+  }
 });
 
 export const petPackageManifestSchema = z
@@ -648,6 +680,13 @@ export const petPackageManifestSchema = z
       });
     }
 
+    for (const logical of manifest.logicalStates) {
+      if (!logical.pointerGaze?.nativeImageUris) continue;
+      const variants = manifest.states.filter(state => state.logicalStateId === logical.id);
+      const size = variants[0]?.nativePixel;
+      if (variants.some(state => !size || !state.nativePixel || state.nativePixel.width !== size.width || state.nativePixel.height !== size.height)) context.addIssue({code: "custom", path: ["logicalStates", logical.id, "pointerGaze"], message: "Native gaze requires matching native dimensions across logical-state variants."});
+    }
+
     for (const transition of manifest.transitions) {
       const target = states.get(transition.toStateId);
       if (!states.has(transition.fromStateId) || !target) {
@@ -657,6 +696,12 @@ export const petPackageManifestSchema = z
           message: "Transition endpoints must reference exported states.",
         });
         continue;
+      }
+      if (transition.nativeAnimation) {
+        const source = states.get(transition.fromStateId)!;
+        const frames = transition.nativeAnimation.frames;
+        if (frames[0]?.imageUri !== source.imageUri || frames.at(-1)?.imageUri !== target.imageUri) context.addIssue({code: "custom", path: ["transitions", transition.id, "nativeAnimation"], message: "Native first/last frames must match source/target stills."});
+        if (!source.nativePixel || !target.nativePixel || source.nativePixel.width !== target.nativePixel.width || source.nativePixel.height !== target.nativePixel.height) context.addIssue({code: "custom", path: ["transitions", transition.id], message: "Native endpoints require matching pixel dimensions."});
       }
       if (target.imageUri !== transition.tailFrameUri) {
         context.addIssue({
@@ -673,10 +718,12 @@ export const petPackageBundleSchema = z.object({
   bundleVersion: z.union([z.literal(1), z.literal(2)]),
   createdAt: z.string().datetime(),
   manifest: petPackageManifestSchema,
+  sourceProject: characterProjectSchema.optional(),
   assets: z.record(z.string(), z.string()).default({}),
   integrity: z.object({
     algorithm: z.literal("SHA-256"),
     manifestSha256: z.string().regex(/^[0-9a-f]{64}$/),
+    sourceProjectSha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
     assets: z.record(z.string(), z.string().regex(/^[0-9a-f]{64}$/)),
   }).optional(),
 }).superRefine((bundle, context) => {
@@ -685,11 +732,8 @@ export const petPackageBundleSchema = z.object({
     context.addIssue({ code: "custom", path: ["integrity"], message: "V2 package requires integrity metadata." });
     return;
   }
-  const uris = [
-    ...bundle.manifest.states.map((state) => state.imageUri),
-    ...bundle.manifest.transitions.flatMap((transition) => [transition.videoUri, transition.tailFrameUri]),
-    ...bundle.manifest.logicalStates.flatMap((state) => state.pointerGaze?.videoUri ? [state.pointerGaze.videoUri] : []),
-  ];
+  if (bundle.sourceProject && !bundle.integrity.sourceProjectSha256) context.addIssue({code:"custom",path:["integrity"],message:"Editable source requires its own integrity hash."});
+  const uris = [...collectRuntimeMediaUris(bundle.manifest), ...(bundle.sourceProject?.artifacts.map(artifact => artifact.uri) ?? [])];
   for (const uri of uris) {
     if (!uri.startsWith("asset://")) {
       context.addIssue({ code: "custom", path: ["manifest"], message: "V2 package media must use asset:// references." });
@@ -754,3 +798,40 @@ export type AgentEventSource = z.infer<typeof agentEventSourceSchema>;
 export type AgentEventType = z.infer<typeof agentEventTypeSchema>;
 export type AgentEventSeverity = z.infer<typeof agentEventSeveritySchema>;
 export type AgentEvent = z.infer<typeof agentEventSchema>;
+
+/** Every state, animation frame, video, selected tail and pointer-gaze media URI. */
+export function collectRuntimeMediaUris(manifest: PetPackageManifest): string[] {
+  return [...new Set([
+    ...manifest.states.map(state => state.imageUri),
+    ...manifest.transitions.flatMap(transition => [
+      ...(transition.videoUri ? [transition.videoUri] : []), transition.tailFrameUri,
+      ...(transition.nativeAnimation?.frames.map(frame => frame.imageUri) ?? []),
+    ]),
+    ...manifest.logicalStates.flatMap(state => [
+      ...(state.pointerGaze?.videoUri ? [state.pointerGaze.videoUri] : []),
+      ...(state.pointerGaze?.nativeImageUris ?? []),
+    ]),
+  ])];
+}
+/** Rewrites media while leaving absent optional fields absent (legacy hash compatibility). */
+export function mapRuntimeMediaUris(manifest: PetPackageManifest, resolve: (uri: string) => string): PetPackageManifest {
+  return {
+    ...manifest,
+    states: manifest.states.map(state => ({...state, imageUri: resolve(state.imageUri)})),
+    transitions: manifest.transitions.map(transition => ({
+      ...transition,
+      ...(transition.videoUri ? {videoUri: resolve(transition.videoUri)} : {}),
+      tailFrameUri: resolve(transition.tailFrameUri),
+      ...(transition.nativeAnimation ? {nativeAnimation: {...transition.nativeAnimation, frames: transition.nativeAnimation.frames.map(frame => ({...frame, imageUri: resolve(frame.imageUri)}))}} : {}),
+    })),
+    logicalStates: manifest.logicalStates.map(state => ({
+      ...state,
+      pointerGaze: state.pointerGaze ? {...state.pointerGaze,
+        ...(state.pointerGaze.videoUri ? {videoUri: resolve(state.pointerGaze.videoUri)} : {}),
+        ...(state.pointerGaze.nativeImageUris ? {nativeImageUris: state.pointerGaze.nativeImageUris.map(resolve) as NonNullable<RuntimePointerGaze["nativeImageUris"]>} : {}),
+      } : undefined,
+    })),
+  };
+}
+export type NativeAnimation = z.infer<typeof nativeAnimationSchema>;
+export type RuntimeNativeAnimation = z.infer<typeof runtimeNativeAnimationSchema>;

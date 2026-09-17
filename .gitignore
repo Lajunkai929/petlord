@@ -12,3 +12,25 @@ apps/desktop/release/
 .python-packages/
 __pycache__/
 *.pyc
+
+# Local artwork, generated outputs, profiles and credentials never enter releases.
+assets/experiments/
+outputs/
+.petlord/
+.petlord-backups/
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-wal
+*.db-shm
+*.pem
+*.p12
+*.pfx
+*.key
+credentials.json
+secrets.json
+
+# Internal orchestration reports and private verification evidence.
+.superpowers/

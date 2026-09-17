@@ -115,6 +115,14 @@ describe("variant-aware routing", () => {
 });
 
 describe("runtime trigger matching", () => {
+  it("prioritizes a specific hotspot over a whole-body click and retains equal-area order",()=>{
+    const body:RuntimeTransition={...manifest.transitions[0],id:"body",triggers:[{id:"body-click",event:"left-click",enabled:true,region:{shape:"rectangle",x:0,y:0,width:1,height:1}}]};
+    const head:RuntimeTransition={...body,id:"head",triggers:[{id:"head-click",event:"left-click",enabled:true,region:{shape:"rectangle",x:.1,y:.1,width:.25,height:.25}}]};
+    const tied={...head,id:"equal-priority"};
+    expect(findRuntimeTrigger([body,head,tied],"left-click",{x:.2,y:.2})?.transition.id).toBe("head");
+    expect(findRuntimeTrigger([body,head],"left-click",{x:.8,y:.8})?.transition.id).toBe("body");
+    expect(findRuntimeTrigger([body,{...head,triggers:head.triggers.map(t=>({...t,event:"double-click" as const}))}],"double-click",{x:.2,y:.2})?.transition.id).toBe("head");
+  });
   it("matches rectangle and ellipse hit regions in normalized coordinates", () => {
     expect(pointIsInsideInteractionRegion(
       { x: 0.2, y: 0.2 },

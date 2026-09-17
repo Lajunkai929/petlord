@@ -2,9 +2,12 @@ import type {
   GenerationProviderCapability,
   GenerationProviderConfiguration,
   GenerationProviderType,
+  GenerationProviderModel,
 } from "@petlord/generation";
 
 export interface StoredGenerationProviderConfiguration {
+  presetId?: string;
+  models?: GenerationProviderModel[];
   id: string;
   type: GenerationProviderType;
   capability: GenerationProviderCapability;

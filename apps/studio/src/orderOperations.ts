@@ -82,7 +82,9 @@ function generationRow(project: CharacterProject, job: GenerationJob): OrderLedg
 export function summarizeOrderEconomics(project: CharacterProject): OrderEconomics {
   const generationRows = project.jobs.flatMap((job) => {
     const row = generationRow(project, job);
-    return row ? [row] : [];
+    const rows = row ? [row] : [];
+    if (job.cost?.priorAttemptsReservedCny) rows.push({ id: `${job.id}-prior-attempts`, label: "此前失败尝试的费用预留", category: job.kind === "state-draft" ? "image" : "video", status: "failed", amountCny: job.cost.priorAttemptsReservedCny, basis: "此前尝试可能已被 Provider 计费，核实前继续保留预算。", createdAt: job.createdAt });
+    return rows;
   });
   const manualRows: OrderLedgerRow[] = project.order.manualCosts.map((entry) => ({
     id: entry.id,

@@ -10,6 +10,7 @@ import {
 
 export function useStudioUrlState(input: {
   project: CharacterProject;
+  ready?: boolean;
   activeArea: StudioArea;
   selection: StudioSelection;
   activateProject: (projectId: string) => boolean;
@@ -18,9 +19,11 @@ export function useStudioUrlState(input: {
 }) {
   const pendingRouteRef = useRef<StudioRouteState | null>(null);
   const suspendUrlWriteRef = useRef(false);
-  const previousProjectIdRef = useRef(input.project.id);
+  const ready = input.ready !== false;
+  const previousProjectIdRef = useRef<string | undefined>(ready ? input.project.id : undefined);
 
   useEffect(() => {
+    if (!ready) return;
     const pendingRoute = pendingRouteRef.current;
     const restoresPendingRoute = pendingRoute && (!pendingRoute.projectId || pendingRoute.projectId === input.project.id);
     if (restoresPendingRoute) {
@@ -28,21 +31,22 @@ export function useStudioUrlState(input: {
       input.setActiveArea(pendingRoute.area);
       pendingRouteRef.current = null;
       suspendUrlWriteRef.current = false;
-    } else if (previousProjectIdRef.current !== input.project.id) {
+    } else if (previousProjectIdRef.current !== undefined && previousProjectIdRef.current !== input.project.id) {
       input.setSelection(resolveStudioSelection(input.project));
     }
     previousProjectIdRef.current = input.project.id;
-  }, [input.project.id]);
+  }, [input.project.id, ready]);
 
   useEffect(() => {
-    if (!input.selection) return;
+    if (!ready || !input.selection) return;
     const isValid = input.selection.kind === "state"
       ? input.project.logicalStates.some((state) => state.id === input.selection?.id)
       : input.project.transitions.some((transition) => transition.id === input.selection?.id);
     if (!isValid) input.setSelection(resolveStudioSelection(input.project));
-  }, [input.project.logicalStates, input.project.transitions, input.selection]);
+  }, [input.project.logicalStates, input.project.transitions, input.selection, ready]);
 
   useEffect(() => {
+    if (!ready) return;
     const restoreFromUrl = () => {
       const route = parseStudioRoute(window.location.href);
       if (route.projectId && route.projectId !== input.project.id) {
@@ -57,10 +61,10 @@ export function useStudioUrlState(input: {
     };
     window.addEventListener("popstate", restoreFromUrl);
     return () => window.removeEventListener("popstate", restoreFromUrl);
-  }, [input.project.id, input.project.logicalStates, input.project.transitions, input.activateProject, input.setActiveArea, input.setSelection]);
+  }, [input.project.id, input.project.logicalStates, input.project.transitions, input.activateProject, input.setActiveArea, input.setSelection, ready]);
 
   useEffect(() => {
-    if (suspendUrlWriteRef.current) return;
+    if (!ready || suspendUrlWriteRef.current) return;
     const nextUrl = buildStudioUrl(window.location.href, {
       area: input.activeArea,
       projectId: input.project.id,
@@ -68,5 +72,5 @@ export function useStudioUrlState(input: {
     });
     const currentUrl = `${window.location.pathname}${window.location.search}`;
     if (nextUrl !== currentUrl) window.history.replaceState(window.history.state, "", nextUrl);
-  }, [input.activeArea, input.project.id, input.selection]);
+  }, [input.activeArea, input.project.id, input.selection, ready]);
 }

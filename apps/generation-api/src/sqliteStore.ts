@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { StoredGenerationProviderConfiguration } from "./providers/types";
+import { DesignError } from "@petlord/design-core/errors";
 
 export const workspaceEntityTypes = ["project", "identity", "style", "template"] as const;
 export type WorkspaceEntityType = typeof workspaceEntityTypes[number];
@@ -9,6 +10,17 @@ export type WorkspaceEntityType = typeof workspaceEntityTypes[number];
 interface EntityRow {
   entity_id: string;
   data_json: string;
+}
+
+export interface WorkspaceSnapshot<T> { data: T; revision: number }
+export interface DesignReceipt<T = unknown> { requestHash: string; response: T }
+export interface EntityCommand<T> {
+  type: WorkspaceEntityType;
+  id: string;
+  expectedRevision: number | null;
+  data: T | null;
+  requestId?: string;
+  requestHash?: string;
 }
 
 interface StateRow {
@@ -91,7 +103,23 @@ export class SqliteStore {
         ON external_event_inbox(received_at DESC);
       CREATE INDEX IF NOT EXISTS external_event_inbox_unread_idx
         ON external_event_inbox(acknowledged_at, received_at DESC);
+
+      CREATE TABLE IF NOT EXISTS workspace_sequence (
+        singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+        revision INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS design_requests (
+        request_id TEXT PRIMARY KEY,
+        request_hash TEXT NOT NULL,
+        response_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
     `);
+    const columns = this.database.prepare("PRAGMA table_info(workspace_entities)").all();
+    if (!columns.some(column => column.name === "revision")) {
+      this.database.exec("ALTER TABLE workspace_entities ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
+    }
+    this.database.exec("INSERT OR IGNORE INTO workspace_sequence(singleton, revision) SELECT 1, COALESCE(MAX(revision), 0) FROM workspace_entities");
   }
 
   listEntities<T>(type: WorkspaceEntityType): T[] {
@@ -102,19 +130,102 @@ export class SqliteStore {
     return rows.map((row) => JSON.parse(row.data_json) as T);
   }
 
-  upsertEntity(type: WorkspaceEntityType, id: string, data: unknown) {
+  private transaction<T>(run: () => T): T {
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const result = run();
+      this.database.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  private nextRevision(): number {
+    const row = this.database.prepare("UPDATE workspace_sequence SET revision = revision + 1 WHERE singleton = 1 RETURNING revision").get()!;
+    return Number(row.revision);
+  }
+
+  private writeEntity(type: WorkspaceEntityType, id: string, data: unknown, revision: number) {
     const timestamp = new Date().toISOString();
     this.database.prepare(`
-      INSERT INTO workspace_entities(entity_type, entity_id, data_json, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO workspace_entities(entity_type, entity_id, data_json, created_at, updated_at, revision)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(entity_type, entity_id) DO UPDATE SET
         data_json = excluded.data_json,
-        updated_at = excluded.updated_at
-    `).run(type, id, JSON.stringify(data), timestamp, timestamp);
+        updated_at = excluded.updated_at,
+        revision = excluded.revision
+    `).run(type, id, JSON.stringify(data), timestamp, timestamp, revision);
+  }
+
+  upsertEntity(type: WorkspaceEntityType, id: string, data: unknown) {
+    this.transaction(() => this.writeEntity(type, id, data, this.nextRevision()));
   }
 
   deleteEntity(type: WorkspaceEntityType, id: string) {
-    this.database.prepare("DELETE FROM workspace_entities WHERE entity_type = ? AND entity_id = ?").run(type, id);
+    this.transaction(() => {
+      const deleted = this.database.prepare("DELETE FROM workspace_entities WHERE entity_type = ? AND entity_id = ?").run(type, id);
+      if (deleted.changes) this.nextRevision();
+    });
+  }
+
+  getEntitySnapshot<T>(type: WorkspaceEntityType, id: string): WorkspaceSnapshot<T> | undefined {
+    const row = this.database.prepare("SELECT data_json, revision FROM workspace_entities WHERE entity_type = ? AND entity_id = ?").get(type, id);
+    return row ? { data: JSON.parse(String(row.data_json)) as T, revision: Number(row.revision) } : undefined;
+  }
+
+  listEntitySnapshots<T>(type: WorkspaceEntityType): WorkspaceSnapshot<T>[] {
+    return this.database.prepare("SELECT data_json, revision FROM workspace_entities WHERE entity_type = ? ORDER BY updated_at DESC").all(type)
+      .map(row => ({ data: JSON.parse(String(row.data_json)) as T, revision: Number(row.revision) }));
+  }
+
+  getDesignReceipt<T = unknown>(requestId: string): DesignReceipt<T> | undefined {
+    const row = this.database.prepare("SELECT request_hash, response_json FROM design_requests WHERE request_id = ?").get(requestId);
+    return row ? { requestHash: String(row.request_hash), response: JSON.parse(String(row.response_json)) as T } : undefined;
+  }
+
+  saveDesignReceipt(requestId: string, requestHash: string, response: unknown): void {
+    this.database.prepare("INSERT INTO design_requests(request_id, request_hash, response_json, created_at) VALUES (?, ?, ?, ?)")
+      .run(requestId, requestHash, JSON.stringify(response), new Date().toISOString());
+  }
+
+  commitDesignOperation<R>(requestId: string, requestHash: string, operation: () => R): R {
+    return this.transaction(() => {
+      const receipt = this.getDesignReceipt<R>(requestId);
+      if (receipt) {
+        if (receipt.requestHash !== requestHash) throw new DesignError("REQUEST_ID_REUSED", "Request id was reused with different input.");
+        return receipt.response;
+      }
+      const response = operation();
+      this.saveDesignReceipt(requestId, requestHash, response);
+      return response;
+    });
+  }
+
+  commitEntityCommand<T, R>(command: EntityCommand<T>, response: (snapshot: WorkspaceSnapshot<T | null>) => R): R {
+    return this.transaction(() => {
+      if (command.requestId) {
+        const receipt = this.getDesignReceipt<R>(command.requestId);
+        if (receipt) {
+          if (receipt.requestHash !== command.requestHash) throw new DesignError("REQUEST_ID_REUSED", "Request id was reused with different input.");
+          return receipt.response;
+        }
+      }
+      const current = this.getEntitySnapshot<T>(command.type, command.id);
+      if ((current?.revision ?? null) !== command.expectedRevision) {
+        throw new DesignError("REVISION_CONFLICT", "Workspace revision changed; read the latest entity before editing.", { expectedRevision: command.expectedRevision, actualRevision: current?.revision ?? null });
+      }
+      const revision = this.nextRevision();
+      if (command.data === null) this.database.prepare("DELETE FROM workspace_entities WHERE entity_type = ? AND entity_id = ?").run(command.type, command.id);
+      else this.writeEntity(command.type, command.id, command.data, revision);
+      const result = response({ data: command.data, revision });
+      if (command.requestId) {
+        if (!command.requestHash) throw new DesignError("INVALID_INPUT", "A command receipt requires an input hash.");
+        this.saveDesignReceipt(command.requestId, command.requestHash, result);
+      }
+      return result;
+    });
   }
 
   getState<T>(key: string): T | undefined {
@@ -137,6 +248,12 @@ export class SqliteStore {
   listGenerationJobs<T>(): T[] {
     const rows = this.database.prepare("SELECT data_json FROM generation_jobs ORDER BY created_at DESC").all() as unknown as StateRow[];
     return rows.map((row) => JSON.parse(row.data_json) as T);
+  }
+
+  upsertGenerationJob(job: { id: string; createdAt: string; updatedAt: string }): void {
+    this.database.prepare(`INSERT INTO generation_jobs(job_id, data_json, created_at, updated_at) VALUES (?, ?, ?, ?)
+      ON CONFLICT(job_id) DO UPDATE SET data_json = excluded.data_json, updated_at = excluded.updated_at`)
+      .run(job.id, JSON.stringify(job), job.createdAt, job.updatedAt);
   }
 
   replaceGenerationJobs<T extends { id: string; createdAt: string; updatedAt: string }>(jobs: T[]) {

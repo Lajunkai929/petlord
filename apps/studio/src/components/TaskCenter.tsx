@@ -1,3 +1,4 @@
+import { Button } from "@petlord/ui";
 import { ArrowSquareOut, CheckCircle, Clock, Queue, SpinnerGap, WarningCircle, X } from "@phosphor-icons/react";
 import type { PersistentGenerationJob } from "@petlord/generation";
 
@@ -36,7 +37,7 @@ export function TaskCenter({ open, jobs, onClose, onNavigate }: TaskCenterProps)
       <aside className="task-center" role="dialog" aria-modal="true" aria-label="生成任务中心" onMouseDown={(event) => event.stopPropagation()}>
         <header>
           <div><Queue size={20} weight="fill" /><span>任务中心</span><b>{jobs.length}</b></div>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="关闭任务中心"><X size={18} /></button>
+          <Button type="text" htmlType="button" className="icon-button" onClick={onClose} aria-label="关闭任务中心"><X size={18} /></Button>
         </header>
         <div className="task-center-list">
           {jobs.length === 0 ? (

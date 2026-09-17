@@ -1,3 +1,4 @@
+import { circularGazeDelta } from "./gazeSeekScheduler";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { PetPackageManifest } from "@petlord/schema";
 import { PetRuntimeCore, pointIsWithinPointerGazeRange, pointerGazeProgress, type NormalizedPoint, type PetRuntimeSnapshot, type RuntimeEvent, type RuntimePointerEvent } from "@petlord/runtime-core";
@@ -113,6 +114,10 @@ export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
   }, []);
 
   useEffect(() => {
+    clearPendingClick();
+  }, [clearPendingClick, snapshot.currentStateId, snapshot.activeTransitionRunId]);
+
+  useEffect(() => {
     lastInteractionSyncAtRef.current = 0;
     clearPendingClick();
     setPointerGazeState((current) => current.active ? { ...current, active: false } : current);
@@ -122,7 +127,7 @@ export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
 
   useEffect(() => {
     const target = pointerGazeState.active ? 1 : 0;
-    const durationMs = currentLogicalState?.pointerGaze?.blendDurationMs ?? 240;
+    const durationMs = currentLogicalState?.pointerGaze?.nativeImageUris ? 0 : currentLogicalState?.pointerGaze?.blendDurationMs ?? 240;
     if (durationMs <= 0) {
       pointerGazeBlendRef.current = target;
       setPointerGazeBlend(target);
@@ -143,7 +148,7 @@ export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
     };
     frame = window.requestAnimationFrame(animate);
     return () => window.cancelAnimationFrame(frame);
-  }, [currentLogicalState?.pointerGaze?.blendDurationMs, pointerGazeState.active]);
+  }, [currentLogicalState?.pointerGaze?.blendDurationMs, currentLogicalState?.pointerGaze?.nativeImageUris, pointerGazeState.active]);
 
   useEffect(() => {
     if (snapshot.activeTransitionId) {
@@ -160,12 +165,19 @@ export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
   useEffect(() => {
     if (!core || !dragReturnPending || snapshot.phase !== "idle") return;
     const originStateId = dragOriginStateIdRef.current;
-    setDragReturnPending(false);
-    dragOriginStateIdRef.current = undefined;
-    if (!originStateId || snapshot.currentStateId === originStateId) return;
+    if (!originStateId || snapshot.currentStateId === originStateId) {
+      setDragReturnPending(false);
+      dragOriginStateIdRef.current = undefined;
+      return;
+    }
     const reverse = core.outgoingTransitions().find((transition) => transition.toStateId === originStateId);
-    if (reverse) core.beginTransition(reverse.id, "drag", Date.now());
-    else core.jumpToState(originStateId, Date.now());
+    const returned = reverse ? core.beginTransition(reverse.id, "drag", Date.now()) : core.jumpToState(originStateId, Date.now());
+    if (!returned.accepted) core.jumpToState(originStateId, Date.now());
+    // Keep the activity controller suspended throughout an authored return animation.
+    if (core.getSnapshot().phase !== "video") {
+      setDragReturnPending(false);
+      dragOriginStateIdRef.current = undefined;
+    }
   }, [core, dragReturnPending, snapshot.currentStateId, snapshot.phase]);
 
   const onPointerMove = useCallback((point: NormalizedPoint, options: PointerMoveOptions = {}) => {
@@ -173,12 +185,17 @@ export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
     const gaze = currentLogicalState?.pointerGaze;
     const timestamp = Date.now();
     const gazeInRange = options.forceGaze || pointIsWithinPointerGazeRange(point, options.gazeActivationRadius ?? gaze?.activationRadius ?? 0, gaze?.anchor);
-    if (gaze?.enabled && gaze.videoUri && gazeInRange) {
+    if (gaze?.enabled && (gaze.videoUri || gaze.nativeImageUris) && gazeInRange) {
       const activation = pointerGazeState.active
         ? { accepted: true }
-        : core.beginPath([], "pointer", timestamp, "注视鼠标");
+        : gaze.nativeImageUris ? core.beginNativePointerGaze(timestamp) : core.beginPath([], "pointer", timestamp, "注视鼠标");
       if (activation.accepted) {
-        setPointerGazeState((current) => ({ active: true, progress: pointerGazeProgress(point, current.progress, gaze.anchor) }));
+        setPointerGazeState((current) => {
+          const progress = pointerGazeProgress(point, current.progress, gaze.anchor);
+          // Global cursor polling also sends stationary positions; avoid a full runtime render.
+          if (current.active && Math.abs(circularGazeDelta(current.progress, progress)) < .0005) return current;
+          return { active: true, progress };
+        });
       }
     } else {
       setPointerGazeState((current) => current.active ? { ...current, active: false } : current);
@@ -201,11 +218,12 @@ export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
     recordInteraction(true);
     const single = core.pointerMatch("left-click", point);
     const double = core.pointerMatch("double-click", point);
+    clearPendingClick();
     if (!double) {
       if (single) core.beginTransition(single.transition.id, "pointer", Date.now(), single.trigger.id);
       return;
     }
-    clearPendingClick();
+    if (!single) return;
     clickTimerRef.current = window.setTimeout(() => {
       clickTimerRef.current = null;
       if (single) core.beginTransition(single.transition.id, "pointer", Date.now(), single.trigger.id);
@@ -237,14 +255,18 @@ export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
   const beginDrag = useCallback(() => {
     const drag = manifest?.dragInteraction;
     if (!core || !drag?.enabled) return { accepted: false, reason: "当前宠物没有配置拖拽姿态" };
-    setPointerGazeState((current) => current.active ? { ...current, active: false } : current);
-    dragOriginStateIdRef.current = core.getSnapshot().currentStateId;
-    setDragReturnPending(false);
-    setDragActive(true);
+    const originStateId = core.getSnapshot().currentStateId;
     const direct = core.outgoingTransitions().find((transition) => transition.toStateId === drag.targetStateId);
-    return direct
-      ? core.beginTransition(direct.id, "drag", Date.now())
-      : core.jumpToState(drag.targetStateId, Date.now());
+    let result = direct ? core.beginTransition(direct.id, "drag", Date.now()) : core.jumpToState(drag.targetStateId, Date.now());
+    // A physical drag is immediate input, even during a noninterruptible action.
+    if (!result.accepted && direct) result = core.jumpToState(drag.targetStateId, Date.now());
+    if (result.accepted) {
+      setPointerGazeState((current) => current.active ? { ...current, active: false } : current);
+      dragOriginStateIdRef.current = originStateId;
+      setDragReturnPending(false);
+      setDragActive(true);
+    }
+    return result;
   }, [core, manifest?.dragInteraction]);
 
   const endDrag = useCallback(() => {
@@ -274,6 +296,7 @@ export function usePetRuntime(manifest: PetPackageManifest | null | undefined) {
     idleTransitions,
     dragInteraction: manifest?.dragInteraction,
     dragActive,
+    dragReturnPending,
     hoveredTriggerId: snapshot.nextHoverTrigger?.triggerId ?? null,
     recordInteraction,
     onPointerMove,
@@ -310,3 +333,6 @@ export {
   type RuntimeRenderResolution,
 } from "./runtimeOptions";
 export { pixelArtGridSize, pixelArtPaletteSize } from "./pixelArtRenderer";
+
+export { NativeSpriteCanvas } from "./NativeSpriteCanvas";
+export { nativeSpriteSample, createNativeSpritePlayback } from "./nativeSpritePlayback";

@@ -16,7 +16,10 @@ function readStdin() {
   return new Promise((resolve) => {
     let input = "";
     process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (chunk) => { input += chunk; });
+    process.stdin.on("data", (chunk) => {
+      input += chunk;
+      if (Buffer.byteLength(input) > 1024 * 1024) { input = ""; process.stdin.destroy(); resolve(""); }
+    });
     process.stdin.on("end", () => resolve(input));
     if (process.stdin.isTTY) resolve("");
   });
@@ -85,9 +88,10 @@ function forward(rawPayload) {
 }
 
 async function main() {
-  const source = process.argv[2];
-  if (!["claude", "codex"].includes(source)) return;
-  const rawPayload = source === "codex" ? payloadArgument() ?? "" : await readStdin();
+  const mode = process.argv[2];
+  if (!["claude", "codex", "codex-hook"].includes(mode)) return;
+  const source = mode === "codex-hook" ? "codex" : mode;
+  const rawPayload = mode === "codex" ? payloadArgument() ?? "" : await readStdin();
   let payload;
   try {
     if (Buffer.byteLength(rawPayload) > 1024 * 1024) return;
@@ -95,8 +99,9 @@ async function main() {
   } catch {
     return;
   } finally {
-    if (source === "codex") forward(rawPayload);
+    if (mode === "codex") forward(rawPayload);
   }
+  if (mode === "codex-hook") payload = await require("./codex-notifications.cjs").enrichCodexHookPayload(payload);
   const socketPath = option("--socket");
   const tokenFile = option("--token-file");
   const databasePath = option("--database");
@@ -114,4 +119,4 @@ async function main() {
   }
 }
 
-void main().finally(() => { process.exitCode = 0; });
+void main().catch(() => undefined).finally(() => { process.exitCode = 0; });

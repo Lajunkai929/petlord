@@ -207,3 +207,23 @@ describe("generation provider contract", () => {
     expect(calculateVideoGenerationCostFromTokens("doubao-seedance-2-0-mini-260615", 38_800)).toBeCloseTo(0.8924, 4);
   });
 });
+
+it("uses explicit provider model estimates ahead of defaults without inventing unknown prices", () => {
+  const models = [{ id: "custom", label: "Custom", description: "", estimatedUnitCostCny: 0.4 }, { id: "doubao-seedream-5-0-260128", label: "Override", description: "", estimatedUnitCostCny: 0.1 }];
+  expect(estimateImageGenerationCost("custom", 3, models)?.maximumCny).toBeCloseTo(1.2);
+  expect(estimateImageGenerationCost("doubao-seedream-5-0-260128", 2, models)?.maximumCny).toBe(0.2);
+  expect(estimateImageGenerationCost("unknown", 1, models)).toBeNull();
+  expect(estimateVideoGenerationCost({ model: "custom", models, resolution: "1080p", durationMode: "smart" })).toMatchObject({ minimumCny: 1.6, maximumCny: 6 });
+  expect(estimateVideoGenerationCost({ model: "custom", models, resolution: "480p", durationMode: "fixed", durationSeconds: 5 })?.maximumCny).toBe(2);
+});
+
+it.each(["toString", "constructor", "__proto__"])("keeps prototype-like model ID %s unpriced", model => {
+  expect(estimateImageGenerationCost(model, 1)).toBeNull();
+  expect(estimateVideoGenerationCost({ model, resolution: "480p", durationMode: "fixed", durationSeconds: 4 })).toBeNull();
+  expect(calculateVideoGenerationCostFromTokens(model, 1000)).toBeNull();
+});
+it.each([NaN, Infinity, -1, 0])("rejects invalid configured model estimate %s", estimatedUnitCostCny => {
+  const models = [{ id: "custom", label: "Custom", description: "", estimatedUnitCostCny }];
+  expect(estimateImageGenerationCost("custom", 1, models)).toBeNull();
+  expect(estimateVideoGenerationCost({ model: "custom", models, resolution: "480p", durationMode: "fixed", durationSeconds: 4 })).toBeNull();
+});

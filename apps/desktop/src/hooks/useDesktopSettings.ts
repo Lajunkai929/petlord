@@ -5,6 +5,7 @@ const storageKey = "petlord.desktop.settings.v1";
 
 export const defaultDesktopSettings: DesktopRuntimeSettings = {
   settingsVersion: 2,
+  theme: "light",
   launchAtLogin: false,
   alwaysOnTop: false,
   clickThrough: false,
@@ -17,6 +18,7 @@ export const defaultDesktopSettings: DesktopRuntimeSettings = {
   gazeTrackingArea: "wide",
   muted: true,
   todoEnabled: true,
+  desktopWasteEnabled: false,
   pluginGrants: {},
   pluginEnabled: {},
 };
@@ -36,6 +38,7 @@ export function useDesktopSettings() {
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  useEffect(() => { document.documentElement.dataset.theme = settings.theme === "dark" ? "dark" : "light"; }, [settings.theme]);
 
   useEffect(() => {
     let cancelled = false;

@@ -6,6 +6,7 @@ export type StateNodeData = {
   semanticKey?: string;
   variantCount: number;
   thumbnail?: string;
+  thumbnailNative?: boolean;
   hasAuthority: boolean;
   hasActualVariant: boolean;
   idleCount: number;
@@ -23,7 +24,7 @@ export function StateNode({ data, selected }: NodeProps<StateGraphNode>) {
       <Handle id="left" className="node-handle node-handle--left" type="source" position={Position.Left} />
       <div className="state-node__media checkerboard">
         {data.thumbnail ? (
-          <img src={data.thumbnail} alt={`${data.label}状态预览`} draggable={false} />
+          <img src={data.thumbnail} style={data.thumbnailNative ? { imageRendering: "pixelated" } : undefined} alt={`${data.label}状态预览`} draggable={false} />
         ) : (
           <CirclesThreePlus size={30} weight="thin" aria-hidden="true" />
         )}

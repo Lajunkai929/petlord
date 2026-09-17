@@ -284,6 +284,15 @@ export class PetRuntimeCore {
     return this.beginPath([transition], source, at, detail);
   }
 
+  /** Native gaze may pause autonomous display loops, never a user/Agent action. */
+  beginNativePointerGaze(at = this.now()): RuntimeActionResult {
+    if (this.activeTransitionId && (this.activeTransitionSource !== "idle" || !this.activeStateDisplayLoop())) return {accepted:false,reason:"宠物正在播放另一个动作"};
+    const result = this.beginPath([], "pointer", at, "注视鼠标");
+    // Empty paths otherwise return before publishing the interrupted loop's idle snapshot.
+    if (result.accepted) this.publish();
+    return result;
+  }
+
   beginPath(path: RuntimeTransition[], source: RuntimeStartSource, at = this.now(), detail?: string): RuntimeActionResult {
     if (this.activeTransitionId) {
       const interrupted = this.interruptibleTransition();
@@ -335,7 +344,7 @@ export class PetRuntimeCore {
   finishVideo(at = this.now()) {
     const transition = this.activeTransition();
     if (!transition || this.phase !== "video") return false;
-    if (transition.authorityBridge.mode === "hard-cut") {
+    if (transition.nativeAnimation || this.manifest.states.find(state => state.id === transition.toStateId)?.nativePixel || transition.authorityBridge.mode === "hard-cut") {
       this.finishTransition(transition, at);
       return true;
     }

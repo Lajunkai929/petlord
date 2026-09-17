@@ -43,3 +43,14 @@ describe("plugin permission boundary", () => {
     expect(deactivate).toHaveBeenCalledOnce();
   });
 });
+
+it("enforces pet control permission for persistent activity loops", async () => {
+  const base = context(); const actions: Array<string | null> = [];
+  base.pet.setActivityLoop = async action => { actions.push(action); return { accepted: true }; };
+  const restricted = createPermissionedPluginContext("demo", base, ["pet:read"]);
+  await expect(restricted.pet.setActivityLoop?.("dig")).rejects.toBeInstanceOf(PluginPermissionError);
+  expect(actions).toEqual([]);
+  const allowed = createPermissionedPluginContext("demo", base, ["pet:control"]);
+  await allowed.pet.setActivityLoop?.("dig"); await allowed.pet.setActivityLoop?.(null);
+  expect(actions).toEqual(["dig", null]);
+});

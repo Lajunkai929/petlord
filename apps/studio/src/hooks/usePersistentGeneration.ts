@@ -1,11 +1,10 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { listPersistentJobs, type PersistentGenerationJob } from "@petlord/generation";
 import type { CharacterProject } from "@petlord/schema";
-import { reconcilePersistentJobs } from "../jobReconciler";
 
 export function usePersistentGeneration(
   project: CharacterProject,
-  setProject: Dispatch<SetStateAction<CharacterProject>>,
+  _setProject: Dispatch<SetStateAction<CharacterProject>>,
 ) {
   const [persistentJobs, setPersistentJobs] = useState<PersistentGenerationJob[]>([]);
   const projectJobs = persistentJobs.filter((job) => job.trigger.projectId === project.id);
@@ -20,7 +19,7 @@ export function usePersistentGeneration(
         const jobs = await listPersistentJobs();
         if (cancelled) return;
         setPersistentJobs(jobs);
-        setProject((current) => reconcilePersistentJobs(current, jobs));
+        window.dispatchEvent(new Event("petlord:workspace-changed"));
       } catch {
         // Health feedback is handled by the studio controller. Preserve the last useful snapshot.
       }
@@ -31,7 +30,7 @@ export function usePersistentGeneration(
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [allActiveJobs.length, project.id, setProject]);
+  }, [allActiveJobs.length, project.id]);
 
   function upsertPersistentJob(job: PersistentGenerationJob) {
     setPersistentJobs((current) => [job, ...current.filter((candidate) => candidate.id !== job.id)]);

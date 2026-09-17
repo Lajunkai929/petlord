@@ -1,0 +1,4 @@
+interface:
+  display_name: "PetLord 界面规范"
+  short_description: "统一 PetLord 的组件、配色、字体、尺寸和无障碍交互"
+  default_prompt: "Use $petlord-design-system to implement and verify a PetLord UI change."

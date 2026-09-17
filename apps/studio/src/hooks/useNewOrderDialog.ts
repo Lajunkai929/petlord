@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { IdentityProfile } from "@petlord/schema";
-import { materializePromptVariables } from "@petlord/generation";
+import { materializePromptVariables, remapCharacterNamePrompt } from "@petlord/generation";
 import { type NewOrderInput, type ProjectTemplateDefinition } from "../projectTemplate";
 import type { StyleProfile } from "../styleLibrary";
 import { templateStateCount, templateStateLabels, templateTransitionPreviews } from "../projectTemplates";
@@ -11,7 +11,7 @@ function emptyOrder(identity?: IdentityProfile, style?: StyleProfile): NewOrderI
   return {
   customerName: "",
   contact: "",
-  characterName: identity?.name ?? "",
+  characterName: identity?.name ?? "新宠物",
   identityProfileId: identity?.id,
   projectName: identity ? `${identity.name} · 新风格` : "",
   styleProfileId: style?.id,
@@ -33,7 +33,7 @@ export function useNewOrderDialog(
   templates: ProjectTemplateDefinition[],
   activeIdentityId: string | undefined,
   activeStyleProfileId: string | undefined,
-  onCreate: (input: NewOrderInput, duplicateCurrent: boolean) => void,
+  onCreate: (input: NewOrderInput, duplicateCurrent: boolean) => void | boolean,
 ) {
   const initialIdentity = identities.find((identity) => identity.id === activeIdentityId) ?? identities[0];
   const initialStyle = styles.find((style) => style.id === activeStyleProfileId) ?? styles[0];
@@ -41,7 +41,7 @@ export function useNewOrderDialog(
   const [form, setForm] = useState<NewOrderInput>(() => emptyOrder(initialIdentity, initialStyle));
   const [duplicateCurrent, setDuplicateCurrent] = useState(false);
   const selectedTemplate = templates.find((template) => template.id === form.projectTemplateId) ?? templates.find((template) => template.id === "companion") ?? templates[0];
-  const selectedIdentity = identities.find((identity) => identity.id === form.identityProfileId) ?? initialIdentity;
+  const selectedIdentity = identities.find((identity) => identity.id === form.identityProfileId);
   const templateOptions = templates.map((template) => ({
     template,
     stateCount: templateStateCount(template),
@@ -55,7 +55,15 @@ export function useNewOrderDialog(
   }, [initialIdentity, initialStyle, open]);
 
   function patch(next: Partial<NewOrderInput>) {
-    setForm((current) => ({ ...current, ...next }));
+    setForm((current) => {
+      const prompts: Partial<NewOrderInput> = {};
+      if (next.characterName !== undefined && next.characterName !== current.characterName) {
+        for (const key of ["stylePrompt", "imageStylePrompt", "videoStylePrompt"] as const) {
+          if (current[key] !== undefined && next[key] === undefined) prompts[key] = remapCharacterNamePrompt(current[key], current.characterName, next.characterName);
+        }
+      }
+      return { ...current, ...prompts, ...next };
+    });
   }
 
   function selectProjectTemplate(projectTemplateId: string) {
@@ -64,6 +72,10 @@ export function useNewOrderDialog(
   }
 
   function selectIdentity(identityProfileId: string) {
+    if (identityProfileId === "new") {
+      patch({ identityProfileId: undefined, characterName: "新宠物", projectName: "" });
+      return;
+    }
     const identity = identities.find((candidate) => candidate.id === identityProfileId);
     if (!identity) return;
     const style = styles.find((candidate) => candidate.id === form.styleProfileId);
@@ -104,8 +116,8 @@ export function useNewOrderDialog(
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (!form.identityProfileId || !form.projectName?.trim()) return;
-    onCreate({ ...form, projectTemplate: selectedTemplate, customerName: form.customerName.trim(), characterName: form.characterName.trim() }, duplicateCurrent);
+    if (!form.projectName?.trim() || !form.characterName.trim()) return;
+    if (onCreate({ ...form, projectTemplate: selectedTemplate, customerName: form.customerName.trim(), characterName: form.characterName.trim() }, duplicateCurrent) === false) return;
     setOpen(false);
     setForm(emptyOrder(identities.find((identity) => identity.id === activeIdentityId) ?? identities[0], styles.find((style) => style.id === activeStyleProfileId) ?? styles[0]));
     setDuplicateCurrent(false);

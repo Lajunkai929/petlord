@@ -1,6 +1,7 @@
+import { SelectField, Switch, Button } from "@petlord/ui";
 import { Crosshair, HandGrabbing } from "@phosphor-icons/react";
-import type { DragInteraction } from "@petlord/schema";
-import { Switch } from "antd";
+import type { Artifact, DragInteraction } from "@petlord/schema";
+
 import { useDragAnchorEditor } from "../hooks/useDragAnchorEditor";
 
 const defaultDragInteraction = (stateId: string): DragInteraction => ({
@@ -15,12 +16,14 @@ export function DragAnchorEditor({
   stateId,
   stateLabel,
   sourceImage,
+  nativePixel,
   value,
   onChange,
 }: {
   stateId: string;
   stateLabel: string;
   sourceImage?: string;
+  nativePixel?: Artifact["nativePixel"];
   value?: DragInteraction;
   onChange: (value?: DragInteraction) => void;
 }) {
@@ -42,19 +45,20 @@ export function DragAnchorEditor({
         <div className="drag-anchor-editor__controls">
           <div
             className={`drag-anchor-editor__canvas checkerboard ${anchorEditor.dragging ? "is-dragging" : ""}`}
+            style={nativePixel ? { aspectRatio: `${nativePixel.width} / ${nativePixel.height}` } : undefined}
             onPointerDown={anchorEditor.begin}
             onPointerMove={anchorEditor.move}
             onPointerUp={anchorEditor.end}
             onPointerCancel={anchorEditor.end}
           >
-            {sourceImage && <img src={sourceImage} alt={`${stateLabel}拖拽锚点配置`} draggable={false} />}
+            {sourceImage && <img style={{ display: "block", imageRendering: nativePixel ? "pixelated" : "auto" }} src={sourceImage} alt={`${stateLabel}拖拽锚点配置`} draggable={false} />}
             <span className="drag-anchor-editor__anchor" style={{ left: `${config.anchor.x * 100}%`, top: `${config.anchor.y * 100}%` }}><Crosshair size={18} weight="bold" /></span>
           </div>
           <div className="drag-anchor-editor__timing">
-            <label><span>对齐</span><select value={config.alignmentDurationMs} onChange={(event) => onChange({ ...config, alignmentDurationMs: Number(event.target.value) })}><option value={250}>0.25 秒</option><option value={400}>0.4 秒</option><option value={600}>0.6 秒</option><option value={800}>0.8 秒</option><option value={1000}>1 秒</option></select></label>
-            <label><span>回位</span><select value={config.returnDurationMs} onChange={(event) => onChange({ ...config, returnDurationMs: Number(event.target.value) })}><option value={250}>0.25 秒</option><option value={500}>0.5 秒</option><option value={800}>0.8 秒</option><option value={1000}>1 秒</option><option value={1500}>1.5 秒</option></select></label>
+            <label><span>对齐</span><SelectField value={config.alignmentDurationMs} onChange={(event) => onChange({ ...config, alignmentDurationMs: Number(event.target.value) })}><option value={250}>0.25 秒</option><option value={400}>0.4 秒</option><option value={600}>0.6 秒</option><option value={800}>0.8 秒</option><option value={1000}>1 秒</option></SelectField></label>
+            <label><span>回位</span><SelectField value={config.returnDurationMs} onChange={(event) => onChange({ ...config, returnDurationMs: Number(event.target.value) })}><option value={250}>0.25 秒</option><option value={500}>0.5 秒</option><option value={800}>0.8 秒</option><option value={1000}>1 秒</option><option value={1500}>1.5 秒</option></SelectField></label>
           </div>
-          <button className="drag-anchor-editor__pose-preset" type="button" onClick={() => onChange(config)}>应用侧视拎后颈规范</button>
+          <Button type="default" className="drag-anchor-editor__pose-preset" htmlType="button" onClick={() => onChange(config)}>应用侧视拎后颈规范</Button>
         </div>
       )}
     </section>

@@ -3,6 +3,9 @@ import { seedProject } from "./seed";
 import { buildStudioUrl, parseStudioRoute, resolveStudioSelection } from "./studioRoute";
 
 describe("studio URL state", () => {
+  it("opens drawing for a selected state in the same project", () => {
+    expect(parseStudioRoute("http://localhost/?page=draw&project=one&state=sitting")).toEqual({ area: "drawing", projectId: "one", selection: { kind: "state", id: "sitting" } });
+  });
   it("parses a transition deep link", () => {
     expect(parseStudioRoute("http://localhost:4310/?page=edit&project=project-a&transition=edge-a")).toEqual({
       area: "graph",

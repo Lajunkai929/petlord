@@ -1,0 +1,4 @@
+import {expect,it,vi} from 'vitest';
+import {createDeferredPetActions} from './deferredPetActions';
+it('defers the latest reaction until collar dragging and its return finish',async()=>{let held=true;const perform=vi.fn(async()=>({accepted:true}));const actions=createDeferredPetActions(()=>held,perform);await actions.perform('attention');await actions.perform('happy');expect(perform).not.toHaveBeenCalled();await actions.flush();expect(perform).not.toHaveBeenCalled();held=false;await actions.flush();expect(perform).toHaveBeenCalledExactlyOnceWith('happy');await actions.flush();expect(perform).toHaveBeenCalledTimes(1);});
+it('clears queued reactions when the pet changes',async()=>{let held=true;const perform=vi.fn(async()=>({accepted:true}));const actions=createDeferredPetActions(()=>held,perform);await actions.perform('attention');actions.clear();held=false;await actions.flush();expect(perform).not.toHaveBeenCalled();});

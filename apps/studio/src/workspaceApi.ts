@@ -1,4 +1,7 @@
-export type WorkspaceEntityType = "project" | "identity" | "style" | "template";
+import { createWorkspaceClient, type WorkspaceEntityType } from "./workspaceClient";
+export type { WorkspaceEntityType, WorkspaceSnapshot } from "./workspaceClient";
+export { WorkspaceSaveError } from "./workspaceClient";
+export const workspaceClient = createWorkspaceClient();
 
 async function readResponse<T>(response: Response, fallback: string): Promise<T> {
   const text = await response.text();
@@ -12,23 +15,16 @@ async function readResponse<T>(response: Response, fallback: string): Promise<T>
   return payload;
 }
 
-export async function listWorkspaceEntities<T>(type: WorkspaceEntityType): Promise<T[]> {
-  const response = await fetch(`/api/workspace/entities/${type}`);
-  return readResponse<T[]>(response, `读取 ${type} 数据失败`);
+export function listWorkspaceEntities<T>(type: WorkspaceEntityType): Promise<T[]> {
+  return workspaceClient.list<T>(type);
 }
 
-export async function saveWorkspaceEntity(type: WorkspaceEntityType, id: string, data: unknown): Promise<void> {
-  const response = await fetch(`/api/workspace/entities/${type}/${encodeURIComponent(id)}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data }),
-  });
-  await readResponse(response, `保存 ${type} 数据失败`);
+export function saveWorkspaceEntity<T>(type: WorkspaceEntityType, id: string, data: T) {
+  return workspaceClient.save(type, id, data);
 }
 
-export async function deleteWorkspaceEntity(type: WorkspaceEntityType, id: string): Promise<void> {
-  const response = await fetch(`/api/workspace/entities/${type}/${encodeURIComponent(id)}`, { method: "DELETE" });
-  await readResponse(response, `删除 ${type} 数据失败`);
+export function deleteWorkspaceEntity(type: WorkspaceEntityType, id: string): Promise<void> {
+  return workspaceClient.remove(type, id);
 }
 
 export async function readWorkspaceState<T>(key: string): Promise<T | undefined> {

@@ -1,9 +1,11 @@
+import { SelectField, Tooltip, Checkbox, TextArea, Button, Input, Switch } from "@petlord/ui";
 import {
   ArrowsLeftRight,
   ArrowRight,
   Check,
   Code,
   ImageSquare,
+  PaintBrush,
   Heartbeat,
   Play,
   Plus,
@@ -43,13 +45,14 @@ import type { StateGenerationOptions } from "../hooks/useStudioController";
 import { StateGenerationDialog } from "./StateGenerationDialog";
 import { sourceStateIdFromVariant } from "../projectTemplates";
 import { PreviewableImage, PreviewableImageGroup } from "./PreviewableImage";
-import { Tooltip } from "antd";
+
 import { StatePointerGazeEditor } from "./StatePointerGazeEditor";
 import { DragAnchorEditor } from "./DragAnchorEditor";
 
 type Selection = { kind: "state" | "transition"; id: string } | null;
 
 interface InspectorProps {
+  onOpenDrawing?: () => void;
   project: CharacterProject;
   styleProfiles: StyleProfile[];
   activeStyleProfileId?: string;
@@ -107,9 +110,12 @@ interface InspectorProps {
   ) => void;
 }
 
-function resolveVariantImage(project: CharacterProject, variantId: string) {
+function resolveVariantArtifact(project: CharacterProject, variantId: string) {
   const variant = project.variants.find((candidate) => candidate.id === variantId);
-  return project.artifacts.find((artifact) => artifact.id === variant?.imageArtifactId)?.uri;
+  return project.artifacts.find((artifact) => artifact.id === variant?.imageArtifactId);
+}
+function resolveVariantImage(project: CharacterProject, variantId: string) {
+  return resolveVariantArtifact(project, variantId)?.uri;
 }
 
 function TransitionInspector({
@@ -191,12 +197,12 @@ function TransitionInspector({
 
       <PreviewableImageGroup><div className="endpoint-pair">
         <figure className="endpoint-frame checkerboard">
-          {source && <PreviewableImage src={source} alt="转换起始实际状态" />}
+          {source && <PreviewableImage src={source} nativePixel={resolveVariantArtifact(project, transition.fromVariantId)?.nativePixel} alt="转换起始实际状态" />}
           <figcaption>起始实际展示图</figcaption>
         </figure>
         <ArrowRight className="endpoint-arrow" size={20} aria-hidden="true" />
         <figure className="endpoint-frame checkerboard">
-          {(selectedEnd ?? draft ?? tail) && <PreviewableImage src={selectedEnd ?? draft ?? tail} alt="转换目标状态" />}
+          {(selectedEnd ?? draft ?? tail) && <PreviewableImage src={selectedEnd ?? draft ?? tail} nativePixel={project.artifacts.find(artifact => artifact.uri === (selectedEnd ?? draft ?? tail))?.nativePixel} alt="转换目标状态" />}
           <figcaption>{transition.endFrameSource === "video-frame" ? "视频选帧 · 实际结束图" : transition.endFrameSource === "source-frame" ? "回到源实际静态图" : "权威参考 · 实际结束图"}</figcaption>
         </figure>
       </div></PreviewableImageGroup>
@@ -210,19 +216,19 @@ function TransitionInspector({
           </div>
           {transition.authorityBridge.mode !== "hard-cut" && (
             <label className="authority-bridge-duration">稳定收口时长
-              <select value={transition.authorityBridge.durationMs} onChange={(event) => onUpdateTransitionAuthorityBridge(transition.id, { ...transition.authorityBridge, durationMs: Number(event.target.value) })}>
+              <SelectField value={transition.authorityBridge.durationMs} onChange={(event) => onUpdateTransitionAuthorityBridge(transition.id, { ...transition.authorityBridge, durationMs: Number(event.target.value) })}>
                 {[120, 180, 240, 360, 420, 500, 700, 1000, 1200, 1500].map((duration) => <option key={duration} value={duration}>{(duration / 1000).toFixed(2)} 秒</option>)}
-              </select>
+              </SelectField>
             </label>
           )}
         </section>
 
       {idleRule && (
         <section className="idle-rule-settings">
-          <div className="idle-rule-heading"><div><Heartbeat size={16} weight="fill" /><strong>待机调度参数</strong></div><label><input type="checkbox" checked={idleRule.enabled} onChange={(event) => onUpdateIdleRule(transition.id, { ...idleRule, enabled: event.target.checked })} />启用</label></div>
+          <div className="idle-rule-heading"><div><Heartbeat size={16} weight="fill" /><strong>待机调度参数</strong></div><Checkbox checked={idleRule.enabled} onChange={(event) => onUpdateIdleRule(transition.id, { ...idleRule, enabled: event.target.checked })}>启用</Checkbox></div>
           <div className="idle-rule-grid">
-            <label>权重<select value={idleRule.weight} onChange={(event) => onUpdateIdleRule(transition.id, { ...idleRule, weight: Number(event.target.value) })}>{[1, 2, 3, 4, 5, 8, 10].map((weight) => <option value={weight} key={weight}>{weight}</option>)}</select></label>
-            <label>冷却时间<select value={idleRule.cooldownMs} onChange={(event) => onUpdateIdleRule(transition.id, { ...idleRule, cooldownMs: Number(event.target.value) })}>{[0, 10_000, 20_000, 30_000, 60_000, 120_000].map((cooldown) => <option value={cooldown} key={cooldown}>{cooldown === 0 ? "无" : `${cooldown / 1000} 秒`}</option>)}</select></label>
+            <label>权重<SelectField value={idleRule.weight} onChange={(event) => onUpdateIdleRule(transition.id, { ...idleRule, weight: Number(event.target.value) })}>{[1, 2, 3, 4, 5, 8, 10].map((weight) => <option value={weight} key={weight}>{weight}</option>)}</SelectField></label>
+            <label>冷却时间<SelectField value={idleRule.cooldownMs} onChange={(event) => onUpdateIdleRule(transition.id, { ...idleRule, cooldownMs: Number(event.target.value) })}>{[0, 10_000, 20_000, 30_000, 60_000, 120_000].map((cooldown) => <option value={cooldown} key={cooldown}>{cooldown === 0 ? "无" : `${cooldown / 1000} 秒`}</option>)}</SelectField></label>
           </div>
         </section>
       )}
@@ -242,13 +248,14 @@ function TransitionInspector({
 
       <TransitionTriggerEditor
         sourceImage={source}
+        nativePixel={resolveVariantArtifact(project, transition.fromVariantId)?.nativePixel}
         triggers={transition.triggers}
         onChange={(triggers) => onUpdateTransitionTriggers(transition.id, triggers)}
       />
 
       <div className="field-block">
         <label htmlFor="transition-prompt">动作提示词</label>
-        <textarea
+        <TextArea
           id="transition-prompt"
           value={transition.prompt}
           rows={4}
@@ -264,7 +271,7 @@ function TransitionInspector({
 
       <div className="field-block transition-duration-field">
         <label htmlFor="transition-duration">动画时长</label>
-        <select
+        <SelectField
           id="transition-duration"
           value={transition.durationMode === "smart" ? "smart" : String(transition.durationSeconds ?? 4)}
           onChange={(event) => {
@@ -274,7 +281,7 @@ function TransitionInspector({
         >
           <option value="smart">智能时长</option>
           {[4, 5, 6, 8, 10, 12, 15].map((seconds) => <option key={seconds} value={seconds}>{seconds} 秒</option>)}
-        </select>
+        </SelectField>
       </div>
 
       <section className="transition-output-settings">
@@ -282,23 +289,17 @@ function TransitionInspector({
           <span><SpeakerSlash size={14} weight="fill" />强制无声</span>
           <span><Square size={14} weight="fill" />{project.generationSettings.videoResolution} · 1:1</span>
         </div>
-        <button
-          className={`transparent-video-toggle ${transition.transparentVideo ? "is-active" : ""}`}
-          type="button"
-          role="switch"
-          aria-checked={transition.transparentVideo}
-          onClick={() => onUpdateTransitionTransparency(transition.id, !transition.transparentVideo)}
-        >
+        <label className={`transparent-video-toggle ${transition.transparentVideo ? "is-active" : ""}`}>
           <span><strong>自动透明化</strong></span>
-          <i aria-hidden="true" />
-        </button>
+          <Switch aria-label="自动透明化" checked={transition.transparentVideo} onChange={(checked) => onUpdateTransitionTransparency(transition.id, checked)} />
+        </label>
         {videoArtifact && (
           <div className={`existing-video-transparency ${usesSmartMatting ? "is-complete" : ""}`}>
             <div><strong>{usesSmartMatting ? "透明处理已完成" : videoArtifact.hasAlpha ? "重新处理透明背景" : "处理当前视频"}</strong></div>
-            <button className="secondary-button" type="button" disabled={busy} onClick={() => onTransparentizeExistingTransition(transition.id)}>{busy ? <SpinnerGap className="spin" size={15} /> : <Sparkle size={15} weight="fill" />}{busy ? "正在逐帧识别宠物主体" : usesSmartMatting ? "重新智能抠图" : "用 Apple Vision 智能抠图"}</button>
+            <Button type="default" className="secondary-button" htmlType="button" disabled={busy} onClick={() => onTransparentizeExistingTransition(transition.id)}>{busy ? <SpinnerGap className="spin" size={15} /> : <Sparkle size={15} weight="fill" />}{busy ? "正在逐帧识别宠物主体" : usesSmartMatting ? "重新智能抠图" : "用 Apple Vision 智能抠图"}</Button>
             <details className="chroma-fallback-settings"><summary>非 macOS 降级参数</summary><div className="chroma-settings">
               <label>参考色<input type="color" value={transparencyProcessing.keyColor} onChange={(event) => onUpdateTransitionTransparencyProcessing(transition.id, { ...transparencyProcessing, keyColor: event.target.value.toUpperCase() })} /></label>
-              <label>抠除强度<select value={transparencyProcessing.similarity} onChange={(event) => onUpdateTransitionTransparencyProcessing(transition.id, { ...transparencyProcessing, similarity: Number(event.target.value) })}>{[0.18, 0.26, 0.34, 0.45, 0.6].map((similarity) => <option value={similarity} key={similarity}>{Math.round(similarity * 100)}%</option>)}</select></label>
+              <label>抠除强度<SelectField value={transparencyProcessing.similarity} onChange={(event) => onUpdateTransitionTransparencyProcessing(transition.id, { ...transparencyProcessing, similarity: Number(event.target.value) })}>{[0.18, 0.26, 0.34, 0.45, 0.6].map((similarity) => <option value={similarity} key={similarity}>{Math.round(similarity * 100)}%</option>)}</SelectField></label>
             </div></details>
           </div>
         )}
@@ -333,38 +334,38 @@ function TransitionInspector({
 
       <div className="inspector-actions">
         {transition.status === "draft" ? (
-          <button className="primary-button" type="button" disabled={busy} onClick={() => onGenerateDraft(transition.id)}>
+          <Button type="primary" className="primary-button" htmlType="button" disabled={busy} onClick={() => onGenerateDraft(transition.id)}>
             {busy ? <SpinnerGap className="spin" size={17} /> : <ImageSquare size={17} weight="fill" />}
             生成目标权威参考图
-          </button>
+          </Button>
         ) : transition.status === "review" ? (
           <>
-            <button className="primary-button" type="button" onClick={() => onApprove(transition.id)}>
+            <Button type="primary" className="primary-button" htmlType="button" onClick={() => onApprove(transition.id)}>
               <Check size={17} weight="bold" />{isIdleTransition ? "批准待机动画" : "批准并新增实际变体"}
-            </button>
-            <button className="secondary-button" type="button" disabled={busy} onClick={() => onGenerate(transition.id)}>
+            </Button>
+            <Button type="default" className="secondary-button" htmlType="button" disabled={busy} onClick={() => onGenerate(transition.id)}>
               {busy ? <SpinnerGap className="spin" size={17} /> : <Sparkle size={17} weight="fill" />}重新生成新版本
-            </button>
+            </Button>
           </>
         ) : (
-          <button
+          <Button type="primary"
             className="primary-button"
-            type="button"
+            htmlType="button"
             disabled={busy}
             onClick={() => onGenerate(transition.id)}
           >
             {busy ? <SpinnerGap className="spin" size={17} /> : <Sparkle size={17} weight="fill" />}
             {transition.status === "approved" ? "重新生成" : "生成转换视频"}
-          </button>
+          </Button>
         )}
-        <button
+        <Button type="default"
           className="secondary-button"
-          type="button"
+          htmlType="button"
           disabled={!transition.videoArtifactId || previewing}
           onClick={() => onPreview(transition.id)}
         >
           <Play size={16} weight="fill" />{previewing ? "正在预览" : "预览完整过渡"}
-        </button>
+        </Button>
         <label className="secondary-button file-button">
           <UploadSimple size={16} />上传视频
           <input type="file" accept="video/mp4,video/webm" hidden onChange={(event) => {
@@ -391,7 +392,7 @@ export function Inspector(props: InspectorProps) {
   if (!selection) {
     return (
       <aside ref={inspectorRef} className={`inspector-panel empty-inspector ${props.mobileOpen ? "is-mobile-open" : ""}`}>
-        <button className="mobile-inspector-close" type="button" onClick={props.onMobileClose} aria-label="关闭编辑面板"><X size={17} /></button>
+        <Button type="text" className="mobile-inspector-close" htmlType="button" onClick={props.onMobileClose} aria-label="关闭编辑面板"><X size={17} /></Button>
         <Sparkle size={28} weight="thin" aria-hidden="true" />
         <h2>选择一个节点或动画</h2>
       </aside>
@@ -402,8 +403,9 @@ export function Inspector(props: InspectorProps) {
     const transition = project.transitions.find((candidate) => candidate.id === selection.id);
     return (
       <aside ref={inspectorRef} className={`inspector-panel ${props.mobileOpen ? "is-mobile-open" : ""}`}>
-        <button className="mobile-inspector-close" type="button" onClick={props.onMobileClose} aria-label="关闭编辑面板"><X size={17} /></button>
-        {transition ? <TransitionInspector {...props} transition={transition} /> : null}
+        <Button type="text" className="mobile-inspector-close" htmlType="button" onClick={props.onMobileClose} aria-label="关闭编辑面板"><X size={17} /></Button>
+        {transition && !transition.nativeAnimation && <div className="drawing-action-entry"><Button type="default" htmlType="button" className="secondary-button" onClick={props.onOpenDrawing}><PaintBrush size={16} />编排帧动画</Button></div>}
+        {transition ? transition.nativeAnimation ? <div className="inspector-content"><header className="inspector-header"><span>原生帧动画</span><h2>{transition.label}</h2></header><p>{transition.nativeAnimation.frames.length} 个显式帧 · {transition.nativeAnimation.frames.reduce((sum, frame) => sum + frame.durationMs, 0)} ms</p><div className="native-inspector-frames">{transition.nativeAnimation.frames.map((frame, index) => { const artifact = props.project.artifacts.find(item => item.id === frame.imageArtifactId); return <figure key={index}><img src={artifact?.uri} alt={artifact?.nativePixel?.frameId ?? String(index + 1)} /><figcaption>{frame.durationMs} ms</figcaption></figure>; })}</div><Button type="default" className="secondary-button" htmlType="button" onClick={props.onOpenDrawing}>编辑帧动画</Button><TransitionTriggerEditor sourceImage={resolveVariantImage(props.project, transition.fromVariantId)} nativePixel={resolveVariantArtifact(props.project, transition.fromVariantId)?.nativePixel} triggers={transition.triggers} onChange={triggers => props.onUpdateTransitionTriggers(transition.id, triggers)} /></div> : <TransitionInspector {...props} transition={transition} /> : null}
       </aside>
     );
   }
@@ -449,10 +451,11 @@ export function Inspector(props: InspectorProps) {
     return sourceStateIdFromVariant(project, transition.fromVariantId) === state?.id || transition.toLogicalStateId === state?.id;
   });
   const stateDefaultVariant = variants.find((variant) => variant.id === state?.defaultVariantId) ?? variants[0];
-  const stateDisplayImage = stateDefaultVariant ? resolveVariantImage(project, stateDefaultVariant.id) : reference?.uri;
+  const stateDisplayArtifact = stateDefaultVariant ? resolveVariantArtifact(project, stateDefaultVariant.id) : reference;
+  const stateDisplayImage = stateDisplayArtifact?.uri;
   return (
     <aside ref={inspectorRef} className={`inspector-panel ${props.mobileOpen ? "is-mobile-open" : ""}`}>
-      <button className="mobile-inspector-close" type="button" onClick={props.onMobileClose} aria-label="关闭编辑面板"><X size={17} /></button>
+      <Button type="text" className="mobile-inspector-close" htmlType="button" onClick={props.onMobileClose} aria-label="关闭编辑面板"><X size={17} /></Button>
       <div className="inspector-content">
         <header className="inspector-header">
           <span>逻辑状态</span>
@@ -462,11 +465,12 @@ export function Inspector(props: InspectorProps) {
           <div><span>语义动作</span><strong>{state?.semanticKey ?? "未映射"}</strong></div>
           <div><span>展示变体</span><strong>{variants.length}</strong></div>
         </div>
-        {state && <details className="state-definition-editor"><summary>状态定义</summary><label><span>名称</span><input value={state.label} onChange={(event) => props.onUpdateStateDefinition(state.id, { label: event.target.value })} /></label><label><span>语义</span><input value={state.semanticKey ?? ""} onChange={(event) => props.onUpdateStateDefinition(state.id, { semanticKey: event.target.value || undefined })} /></label><label><span>生成说明</span><textarea rows={5} value={state.description} onChange={(event) => props.onUpdateStateDefinition(state.id, { description: event.target.value })} /></label></details>}
+        {state && <details className="state-definition-editor"><summary>状态定义</summary><label><span>名称</span><Input value={state.label} onChange={(event) => props.onUpdateStateDefinition(state.id, { label: event.target.value })} /></label><label><span>语义</span><Input value={state.semanticKey ?? ""} onChange={(event) => props.onUpdateStateDefinition(state.id, { semanticKey: event.target.value || undefined })} /></label><label><span>生成说明</span><TextArea rows={5} value={state.description} onChange={(event) => props.onUpdateStateDefinition(state.id, { description: event.target.value })} /></label></details>}
         {state && <StatePointerGazeEditor
           value={state.pointerGaze}
           videos={gazeVideos}
           sourceImage={stateDisplayImage}
+          nativePixel={stateDisplayArtifact?.nativePixel}
           activeJob={activeGazeJob}
           estimate={gazeCostEstimate}
           busy={props.busy}
@@ -478,13 +482,14 @@ export function Inspector(props: InspectorProps) {
           stateId={state.id}
           stateLabel={state.label}
           sourceImage={stateDisplayImage}
+          nativePixel={stateDisplayArtifact?.nativePixel}
           value={project.dragInteraction}
           onChange={props.onUpdateDragInteraction}
         />}
         {state && (
           <section className="idle-scheduler-section">
-            <div className="idle-scheduler-heading"><div><Heartbeat size={18} weight="fill" /><div><strong>待机动画</strong></div></div><button type="button" onClick={() => props.onAddIdleTransition(state.id)}><Plus size={14} weight="bold" />添加</button></div>
-            <label className="idle-scheduler-toggle"><span><strong>启用自动调度</strong><small>{idleTransitions.length} 条自循环动画</small></span><input type="checkbox" checked={state.idleScheduler.enabled} onChange={(event) => props.onUpdateIdleScheduler(state.id, { ...state.idleScheduler, enabled: event.target.checked })} /></label>
+            <div className="idle-scheduler-heading"><div><Heartbeat size={18} weight="fill" /><div><strong>待机动画</strong></div></div><Button type="default" htmlType="button" onClick={() => props.onAddIdleTransition(state.id)}><Plus size={14} weight="bold" />添加</Button></div>
+            <Checkbox className="idle-scheduler-toggle" checked={state.idleScheduler.enabled} onChange={(event) => props.onUpdateIdleScheduler(state.id, { ...state.idleScheduler, enabled: event.target.checked })}><span><strong>启用自动调度</strong><small>{idleTransitions.length} 条自循环动画</small></span></Checkbox>
             <div className="idle-playback-switch" role="group" aria-label="待机动画播放模式">
               <button className={(state.idleScheduler.playbackMode ?? "interval") === "interval" ? "is-active" : ""} type="button" onClick={() => props.onUpdateIdleScheduler(state.id, { ...state.idleScheduler, playbackMode: "interval", minIntervalMs: Math.max(3_000, state.idleScheduler.minIntervalMs), maxIntervalMs: Math.max(5_000, state.idleScheduler.maxIntervalMs) })}>间隔播放</button>
               <button className={state.idleScheduler.playbackMode === "continuous" ? "is-active" : ""} type="button" onClick={() => props.onUpdateIdleScheduler(state.id, { ...state.idleScheduler, playbackMode: "continuous" })}>连续播放</button>
@@ -494,10 +499,10 @@ export function Inspector(props: InspectorProps) {
               <button className={state.idleScheduler.strategy === "weighted-round-robin" ? "is-active" : ""} type="button" onClick={() => props.onUpdateIdleScheduler(state.id, { ...state.idleScheduler, strategy: "weighted-round-robin" })}>加权轮询</button>
             </div>
             {(state.idleScheduler.playbackMode ?? "interval") === "interval" ? <div className="idle-interval-grid">
-              <label>最短间隔<select value={state.idleScheduler.minIntervalMs} onChange={(event) => props.onUpdateIdleScheduler(state.id, { ...state.idleScheduler, minIntervalMs: Number(event.target.value), maxIntervalMs: Math.max(Number(event.target.value), state.idleScheduler.maxIntervalMs) })}>{[3000, 5000, 8000, 10_000, 15_000, 30_000, 60_000].map((interval) => <option key={interval} value={interval}>{interval / 1000} 秒</option>)}</select></label>
-              <label>最长间隔<select value={state.idleScheduler.maxIntervalMs} onChange={(event) => props.onUpdateIdleScheduler(state.id, { ...state.idleScheduler, maxIntervalMs: Number(event.target.value), minIntervalMs: Math.min(Number(event.target.value), state.idleScheduler.minIntervalMs) })}>{[5000, 8000, 10_000, 18_000, 30_000, 60_000, 120_000].map((interval) => <option key={interval} value={interval}>{interval / 1000} 秒</option>)}</select></label>
+              <label>最短间隔<SelectField value={state.idleScheduler.minIntervalMs} onChange={(event) => props.onUpdateIdleScheduler(state.id, { ...state.idleScheduler, minIntervalMs: Number(event.target.value), maxIntervalMs: Math.max(Number(event.target.value), state.idleScheduler.maxIntervalMs) })}>{[3000, 5000, 8000, 10_000, 15_000, 30_000, 60_000].map((interval) => <option key={interval} value={interval}>{interval / 1000} 秒</option>)}</SelectField></label>
+              <label>最长间隔<SelectField value={state.idleScheduler.maxIntervalMs} onChange={(event) => props.onUpdateIdleScheduler(state.id, { ...state.idleScheduler, maxIntervalMs: Number(event.target.value), minIntervalMs: Math.min(Number(event.target.value), state.idleScheduler.minIntervalMs) })}>{[5000, 8000, 10_000, 18_000, 30_000, 60_000, 120_000].map((interval) => <option key={interval} value={interval}>{interval / 1000} 秒</option>)}</SelectField></label>
             </div> : null}
-            <label className="idle-repeat-option"><input type="checkbox" checked={state.idleScheduler.avoidImmediateRepeat} onChange={(event) => props.onUpdateIdleScheduler(state.id, { ...state.idleScheduler, avoidImmediateRepeat: event.target.checked })} />避免连续重复</label>
+            <Checkbox className="idle-repeat-option" checked={state.idleScheduler.avoidImmediateRepeat} onChange={(event) => props.onUpdateIdleScheduler(state.id, { ...state.idleScheduler, avoidImmediateRepeat: event.target.checked })}>避免连续重复</Checkbox>
             {idleTransitions.length > 0 && <div className="idle-transition-list">{idleTransitions.map((transition) => <button type="button" key={transition.id} onClick={() => props.onSelectTransition(transition.id)}><span><strong>{transition.label}</strong><small>{transition.status === "approved" ? "已批准" : "待生成"}</small></span><em>{transition.idleRule?.weight ?? 1}×</em></button>)}</div>}
           </section>
         )}
@@ -521,11 +526,11 @@ export function Inspector(props: InspectorProps) {
           ) : (
             variants.map((variant) => (
               <div className="variant-row" key={variant.id}>
-                <PreviewableImage src={resolveVariantImage(project, variant.id)} alt={`${variant.label}预览`} />
+                <PreviewableImage nativePixel={resolveVariantArtifact(project, variant.id)?.nativePixel} src={resolveVariantImage(project, variant.id)} alt={`${variant.label}预览`} />
                 <div><strong>{variant.label}</strong><span>{variant.origin.kind === "reference" ? "权威参考 · 状态默认" : variant.origin.kind === "initial" ? "历史初始展示图" : "过渡视频选帧"}</span></div>
                 <span className="variant-row-actions">
                   {variant.id === state?.defaultVariantId && <Check size={15} weight="bold" aria-label="状态默认展示图" />}
-                  <Tooltip title="设为过渡起点"><button className={variant.id === state?.preferredOutboundVariantId ? "is-active" : ""} type="button" onClick={() => state && props.onSetPreferredOutboundVariant(state.id, variant.id)}><ArrowRight size={14} weight="bold" /></button></Tooltip>
+                  <Tooltip title="设为过渡起点"><Button type="default" className={variant.id === state?.preferredOutboundVariantId ? "is-active" : ""} htmlType="button" onClick={() => state && props.onSetPreferredOutboundVariant(state.id, variant.id)}><ArrowRight size={14} weight="bold" /></Button></Tooltip>
                 </span>
               </div>
             ))
@@ -539,12 +544,12 @@ export function Inspector(props: InspectorProps) {
             </div>
             {reference ? (
               <figure className="state-reference-preview checkerboard">
-                <PreviewableImage src={reference.uri} alt={`${state.label}状态参考图`} />
+                <PreviewableImage nativePixel={reference.nativePixel} src={reference.uri} alt={`${state.label}状态参考图`} />
               </figure>
             ) : (
               <div className="variant-empty compact-empty">
                 <ImageSquare size={24} weight="thin" />
-                <p>生成或上传参考图</p>
+                <p>绘制、生成或导入状态图</p>
               </div>
             )}
             {references.length > 0 && (
@@ -556,7 +561,7 @@ export function Inspector(props: InspectorProps) {
                       className={artifact.id === state.referenceArtifactId ? "is-active" : ""}
                       key={artifact.id}
                     >
-                      <PreviewableImage src={artifact.uri} alt={artifact.label ?? `参考版本 ${index + 1}`} />
+                      <PreviewableImage nativePixel={artifact.nativePixel} src={artifact.uri} alt={artifact.label ?? `参考版本 ${index + 1}`} />
                       <button type="button" onClick={() => props.onActivateStateReference(state.id, artifact.id)} title={`设为当前参考：${artifact.label ?? `版本 ${index + 1}`}`}>v{index + 1}</button>
                     </article>
                   ))}
@@ -564,7 +569,7 @@ export function Inspector(props: InspectorProps) {
               </div>
             )}
             {reference && state.defaultVariantId !== project.initialVariantId && (
-              <button className="initial-state-button" type="button" onClick={() => props.onSetInitialStateFromReference(state.id)}><Check size={15} weight="bold" /><span><strong>设为启动状态</strong></span></button>
+              <Button type="default" className="initial-state-button" htmlType="button" onClick={() => props.onSetInitialStateFromReference(state.id)}><Check size={15} weight="bold" /><span><strong>设为启动状态</strong></span></Button>
             )}
             {activeStateJob && (
               <div className="generation-progress" role="status">
@@ -583,6 +588,7 @@ export function Inspector(props: InspectorProps) {
             </div>
             <GenerationCostNotice estimate={imageCostEstimate} />
             <div className="state-reference-actions">
+              <Button type="default" htmlType="button" className="secondary-button" onClick={props.onOpenDrawing}><PaintBrush size={16} />绘制状态图</Button>
               <StateGenerationDialog project={project} state={state} profiles={props.styleProfiles} activeStyleProfileId={props.activeStyleProfileId} busy={props.busy} onGenerate={props.onGenerateStateImage} />
               <label className="secondary-button file-button">
                 <UploadSimple size={16} />上传图片

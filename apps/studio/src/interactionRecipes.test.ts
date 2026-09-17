@@ -8,7 +8,7 @@ describe("companion interaction recipe", () => {
     const project = applyCompanionInteractionRecipe({ ...lotteryPixelProject, transitions: [] });
     expect(project.transitions).toHaveLength(13);
     expect(project.transitions.find((transition) => transition.id.endsWith("rest-belly"))?.triggers[0]).toMatchObject({
-      event: "double-click",
+      event: "left-click",
       region: { shape: "ellipse", x: 0.04, y: 0.04, width: 0.92, height: 0.92 },
     });
     expect(project.transitions.find((transition) => transition.id.endsWith("belly-wiggle"))?.triggers[0]).toMatchObject({ event: "hover", repeatWhileHovered: true });

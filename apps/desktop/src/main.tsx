@@ -1,4 +1,6 @@
 import { StrictMode } from "react";
+import { ConfigProvider } from "@petlord/ui";
+import { petLordAntdTheme } from "@petlord/ui";
 import { createRoot } from "react-dom/client";
 import { RuntimeMediaCanvas } from "@petlord/runtime-react";
 import { AgentInbox } from "./components/AgentInbox";
@@ -13,12 +15,13 @@ import "./styles.css";
 
 function PetSurface() {
   const runtime = useDesktopRuntime();
-  return <main className="pet-window-root" onPointerMove={runtime.onStagePointerMove} onPointerLeave={runtime.onStagePointerLeave} onPointerUp={runtime.onPetPointerUp} onPointerCancel={runtime.onPetPointerUp}>
+  return <ConfigProvider theme={petLordAntdTheme(runtime.settings.settings.theme)}><main className="pet-window-root" onPointerMove={runtime.onStagePointerMove} onPointerLeave={runtime.onStagePointerLeave} onPointerUp={runtime.onPetPointerUp} onPointerCancel={runtime.onPetPointerUp}>
     {runtime.speech && <div className="pet-message-bubble" role="status">{runtime.speech}</div>}
     {runtime.agentInboxOpen && runtime.agentActivityAvailable && <AgentInbox events={runtime.agentEvents} onClose={() => runtime.setAgentInboxOpen(false)} onOpen={(id) => { void runtime.openAgentEvent(id); }} onAcknowledge={(id) => { void runtime.acknowledgeAgentEvent(id); }} onSimulate={(source) => { void runtime.simulateAgentEvent(source); }} />}
     {runtime.todoPanelOpen && runtime.todoAvailable && <TodoPopover items={runtime.items} title={runtime.title} setTitle={runtime.setTitle} onAdd={(event) => { void runtime.addItem(event); }} onComplete={(id) => { void runtime.completeItem(id); }} onRemove={(id) => { void runtime.removeItem(id); }} onClose={() => runtime.setTodoPanelOpen(false)} />}
     <div className="pet-hitarea">
       <div
+        data-facing={!runtime.dragActive && runtime.currentState?.logicalStateId === runtime.manifest?.semanticActions.run ? runtime.companionFacing : "left"}
         ref={runtime.petSurfaceRef}
         className={`pet-media-surface ${runtime.dragActive ? "is-dragging" : ""}`}
         style={{ width: `${runtime.settings.settings.displaySize}px`, height: `${runtime.settings.settings.displaySize}px`, transform: `translate3d(${runtime.dragOffset.x}px, ${runtime.dragOffset.y}px, 0)`, transitionDuration: `${runtime.dragTransitionMs}ms` }}
@@ -31,6 +34,7 @@ function PetSurface() {
       >
         {runtime.currentState && <RuntimeMediaCanvas
           currentState={runtime.currentState}
+          targetState={runtime.manifest?.states.find(state => state.id === runtime.activeTransition?.toStateId)}
           activeTransition={runtime.activeTransition}
           phase={runtime.runtimePhase}
           bridgeProgress={runtime.bridgeProgress}
@@ -52,12 +56,12 @@ function PetSurface() {
         />}
       </div>
     </div>
-  </main>;
+  </main></ConfigProvider>;
 }
 
 function SettingsSurface() {
   const controller = useDesktopSettingsWindow();
-  return <DesktopSettingsWindow controller={controller} />;
+  return <ConfigProvider theme={petLordAntdTheme(controller.settings.settings.theme)}><DesktopSettingsWindow controller={controller} /></ConfigProvider>;
 }
 
 installRuntimeErrorReporting();

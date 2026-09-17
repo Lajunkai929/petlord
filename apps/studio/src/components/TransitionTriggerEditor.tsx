@@ -1,10 +1,12 @@
+import { SelectField, Popconfirm, Button, Input, Checkbox } from "@petlord/ui";
 import { CursorClick, HandPointing, HourglassMedium, MouseLeftClick, MouseRightClick, MouseSimple, Plus, Timer, Trash } from "@phosphor-icons/react";
-import { Popconfirm } from "antd";
-import type { TransitionTrigger } from "@petlord/schema";
+
+import type { Artifact, TransitionTrigger } from "@petlord/schema";
 import { useTransitionTriggerEditor } from "../hooks/useTransitionTriggerEditor";
 
 interface TransitionTriggerEditorProps {
   sourceImage?: string;
+  nativePixel?: Artifact["nativePixel"];
   triggers: TransitionTrigger[];
   onChange: (triggers: TransitionTrigger[]) => void;
 }
@@ -32,17 +34,17 @@ function EventIcon({ event }: { event: TransitionTrigger["event"] }) {
   return <HandPointing size={16} />;
 }
 
-export function TransitionTriggerEditor({ sourceImage, triggers, onChange }: TransitionTriggerEditorProps) {
+export function TransitionTriggerEditor({ sourceImage, nativePixel, triggers, onChange }: TransitionTriggerEditorProps) {
   const editor = useTransitionTriggerEditor(triggers, onChange);
   const active = editor.active;
   return (
     <section className="trigger-editor">
       <header className="trigger-editor-heading">
         <div><CursorClick size={18} weight="fill" /><div><strong>触发条件</strong><span>条件属于这条过渡线</span></div></div>
-        <button type="button" className="tertiary-button" onClick={() => editor.add()}><Plus size={14} />添加</button>
+        <Button type="text" htmlType="button" className="tertiary-button" onClick={() => editor.add()}><Plus size={14} />添加</Button>
       </header>
       {triggers.length === 0 ? (
-        <button type="button" className="trigger-empty" onClick={() => editor.add()}><Timer size={24} weight="thin" /><strong>添加低频触发条件</strong><span>默认：进入这个状态后，连续 1 分钟无交互再转换。</span></button>
+        <button type="button" className="trigger-empty" onClick={() => editor.add()}><CursorClick size={24} weight="thin" /><strong>添加左键单击</strong><span>默认：单击宠物热区后播放这段动作。也可以改为定时或其他事件。</span></button>
       ) : (
         <>
           <div className="trigger-tabs">
@@ -55,11 +57,11 @@ export function TransitionTriggerEditor({ sourceImage, triggers, onChange }: Tra
           {active && (
             <div className="trigger-config">
               <div className="trigger-form-row">
-                <label><span>事件</span><select value={active.event} onChange={(event) => editor.changeEvent(event.target.value as TransitionTrigger["event"])}><optgroup label="低频自动转换"><option value="inactivity">无交互达到</option><option value="state-timeout">进入状态达到</option></optgroup><optgroup label="鼠标交互"><option value="double-click">鼠标双击</option><option value="hover">Hover</option><option value="pointer-leave">鼠标移出宠物</option><option value="left-click">鼠标左键点击</option><option value="right-click">鼠标右键点击</option></optgroup></select></label>
-                {active.event === "hover" && <label><span>停留时长</span><div className="duration-input"><input type="number" min={0.1} max={30} step={0.1} value={(active.hoverDurationMs ?? 800) / 1000} onChange={(event) => editor.changeHoverSeconds(Number(event.target.value))} /><em>秒</em></div></label>}
-                {isTimedEvent(active.event) && <label><span>等待时长</span><div className="duration-input"><input type="number" min={1} max={86400} step={1} value={(active.timerDurationMs ?? 60_000) / 1000} onChange={(event) => editor.changeTimerSeconds(Number(event.target.value))} /><em>秒</em></div></label>}
+                <label><span>事件</span><SelectField value={active.event} onChange={(event) => editor.changeEvent(event.target.value as TransitionTrigger["event"])}><optgroup label="低频自动转换"><option value="inactivity">无交互达到</option><option value="state-timeout">进入状态达到</option></optgroup><optgroup label="鼠标交互"><option value="double-click">鼠标双击</option><option value="hover">Hover</option><option value="pointer-leave">鼠标移出宠物</option><option value="left-click">鼠标左键点击</option><option value="right-click">鼠标右键点击</option></optgroup></SelectField></label>
+                {active.event === "hover" && <label><span>停留时长</span><div className="duration-input"><Input type="number" min={0.1} max={30} step={0.1} value={(active.hoverDurationMs ?? 800) / 1000} onChange={(event) => editor.changeHoverSeconds(Number(event.target.value))} /><em>秒</em></div></label>}
+                {isTimedEvent(active.event) && <label><span>等待时长</span><div className="duration-input"><Input type="number" min={1} max={86400} step={1} value={(active.timerDurationMs ?? 60_000) / 1000} onChange={(event) => editor.changeTimerSeconds(Number(event.target.value))} /><em>秒</em></div></label>}
               </div>
-              {active.event === "hover" && <label className="trigger-repeat-toggle"><input type="checkbox" checked={active.repeatWhileHovered ?? false} onChange={(event) => editor.patch(active.id, { repeatWhileHovered: event.target.checked })} /><span><strong>悬停时循环</strong></span></label>}
+              {active.event === "hover" && <Checkbox className="trigger-repeat-toggle" checked={active.repeatWhileHovered ?? false} onChange={(event) => editor.patch(active.id, { repeatWhileHovered: event.target.checked })}><span><strong>悬停时循环</strong></span></Checkbox>}
               {isTimedEvent(active.event) ? (
                 <div className="trigger-timer-note">
                   {active.event === "inactivity" ? <Timer size={17} /> : <HourglassMedium size={17} />}
@@ -72,15 +74,15 @@ export function TransitionTriggerEditor({ sourceImage, triggers, onChange }: Tra
                   <div><strong>响应热区</strong><span>在宠物图上拖动圈选</span></div>
                   <div className="shape-switch"><button type="button" className={active.region?.shape !== "rectangle" ? "is-active" : ""} onClick={() => editor.changeShape("ellipse")}>椭圆</button><button type="button" className={active.region?.shape === "rectangle" ? "is-active" : ""} onClick={() => editor.changeShape("rectangle")}>矩形</button></div>
                 </div>
-                <div className={`trigger-region-canvas checkerboard ${editor.drawing ? "is-drawing" : ""}`} onPointerDown={editor.beginRegion} onPointerMove={editor.updateRegion} onPointerUp={editor.endRegion}>
-                  {sourceImage && <img src={sourceImage} alt="过渡起始实际展示图" draggable={false} />}
+                <div style={nativePixel ? { aspectRatio: `${nativePixel.width} / ${nativePixel.height}` } : undefined} className={`trigger-region-canvas checkerboard ${editor.drawing ? "is-drawing" : ""}`} onPointerDown={editor.beginRegion} onPointerMove={editor.updateRegion} onPointerUp={editor.endRegion}>
+                  {sourceImage && <img style={{ display: "block", imageRendering: nativePixel ? "pixelated" : "auto" }} src={sourceImage} alt="过渡起始实际展示图" draggable={false} />}
                   {active.region && <span className={`trigger-hotspot is-${active.region.shape}`} style={{ left: `${active.region.x * 100}%`, top: `${active.region.y * 100}%`, width: `${active.region.width * 100}%`, height: `${active.region.height * 100}%` }}><i>{eventText[active.event]}</i></span>}
                 </div>
               </>}
               <footer className="trigger-config-footer">
-                <label className="toggle-label"><input type="checkbox" checked={active.enabled} onChange={(event) => editor.setEnabled(event.target.checked)} /><span>启用该条件</span></label>
+                <Checkbox className="toggle-label" checked={active.enabled} onChange={(event) => editor.setEnabled(event.target.checked)}><span>启用该条件</span></Checkbox>
                 <Popconfirm title="删除这个触发条件？" okText="删除" cancelText="取消" okButtonProps={{ danger: true }} onConfirm={() => editor.remove(active.id)}>
-                  <button type="button" className="danger-text-button"><Trash size={14} />删除条件</button>
+                  <Button type="text" htmlType="button" className="danger-text-button"><Trash size={14} />删除条件</Button>
                 </Popconfirm>
               </footer>
             </div>

@@ -1,3 +1,4 @@
+import { SelectField, Button } from "@petlord/ui";
 import {
   ArrowCounterClockwise,
   CheckCircle,
@@ -74,23 +75,23 @@ function PreviewToolbar({ preview, syncedAt }: { preview: RuntimePreviewControll
           <button className={preview.backdrop === "transparent" ? "is-active" : ""} type="button" onClick={() => preview.setBackdrop("transparent")}><SquaresFour size={15} />透明</button>
         </div>
         <label className="preview-scale-control">像素
-          <select value={preview.pixelGridSize} onChange={(event) => preview.setPixelGridSize(Number(event.target.value) as RuntimePixelGridSize)}>
+          <SelectField value={preview.pixelGridSize} onChange={(event) => preview.setPixelGridSize(Number(event.target.value) as RuntimePixelGridSize)}>
             {runtimePixelGridOptions.map((size) => <option value={size} key={size}>{size} 格</option>)}
-          </select>
+          </SelectField>
         </label>
         <label className="preview-scale-control">大小
-          <select value={preview.displaySize} onChange={(event) => preview.setDisplaySize(Number(event.target.value) as RuntimeDisplaySize)}>
+          <SelectField value={preview.displaySize} onChange={(event) => preview.setDisplaySize(Number(event.target.value) as RuntimeDisplaySize)}>
             {runtimeDisplaySizeOptions.map((size) => <option value={size} key={size}>{size} px</option>)}
-          </select>
+          </SelectField>
         </label>
         <label className="preview-scale-control">帧率
-          <select value={preview.frameRate} onChange={(event) => preview.setFrameRate(Number(event.target.value) as typeof preview.frameRate)}>{runtimeFrameRateOptions.map((frameRate) => <option value={frameRate} key={frameRate}>{frameRate} FPS</option>)}</select>
+          <SelectField value={preview.frameRate} onChange={(event) => preview.setFrameRate(Number(event.target.value) as typeof preview.frameRate)}>{runtimeFrameRateOptions.map((frameRate) => <option value={frameRate} key={frameRate}>{frameRate} FPS</option>)}</SelectField>
         </label>
         <button className={`preview-tool-button ${preview.pixelated ? "is-active" : ""}`} type="button" onClick={() => preview.setPixelated(!preview.pixelated)} title="固定像素网格、有限色阶、Alpha 硬边与一像素轮廓">像素艺术</button>
         <button className={`preview-tool-button ${preview.showHotspots ? "is-active" : ""}`} type="button" onClick={() => preview.setShowHotspots(!preview.showHotspots)}>
           {preview.showHotspots ? <Eye size={16} /> : <EyeSlash size={16} />}触发热区
         </button>
-        <button className="preview-tool-button" type="button" onClick={preview.reset}><ArrowCounterClockwise size={16} />重置</button>
+        <Button type="default" className="preview-tool-button" htmlType="button" onClick={preview.reset}><ArrowCounterClockwise size={16} />重置</Button>
       </div>
     </header>
   );
@@ -116,6 +117,7 @@ function PreviewBody({ preview, onEdit }: { preview: RuntimePreviewController; o
           >
             <RuntimeMediaCanvas
               currentState={preview.currentState}
+              targetState={preview.manifest?.states.find(state => state.id === preview.activeTransition?.toStateId)}
               activeTransition={preview.activeTransition}
               phase={preview.runtimePhase}
               bridgeProgress={preview.transitionBlendProgress}
@@ -174,7 +176,7 @@ function RuntimeInspector({ preview, onEdit }: { preview: RuntimePreviewControll
     <aside className="runtime-inspector">
       <div className="runtime-inspector-heading"><span>运行时检查器</span><small>core 0.1 · {preview.runtimePhase}</small></div>
       <section className="runtime-current-state">
-        <div className="runtime-state-thumb checkerboard"><img src={currentState?.imageUri} alt="当前实际展示帧" /></div>
+        <div className="runtime-state-thumb checkerboard"><img src={currentState?.imageUri} style={{ imageRendering: currentState?.nativePixel ? "pixelated" : "auto" }} alt="当前实际展示帧" /></div>
         <div><small>当前实际状态 · {currentState?.logicalStateId}</small><strong>{currentState?.label}</strong><code>{currentState?.id}</code></div>
       </section>
       <section className="runtime-inspector-section">
@@ -187,7 +189,7 @@ function RuntimeInspector({ preview, onEdit }: { preview: RuntimePreviewControll
         )}
         {interactiveTransitions.length > 0
           ? <div className="runtime-transition-list">{interactiveTransitions.map((transition) => <TransitionTester key={transition.id} transition={transition} onPlay={preview.replayTransition} />)}</div>
-          : <div className="runtime-empty"><CursorClick size={23} weight="thin" /><strong>没有可用过渡</strong><button type="button" onClick={onEdit}><Graph size={13} />回到创作</button></div>}
+          : <div className="runtime-empty"><CursorClick size={23} weight="thin" /><strong>没有可用过渡</strong><Button type="default" htmlType="button" onClick={onEdit}><Graph size={13} />回到创作</Button></div>}
       </section>
       {preview.pointerGaze?.enabled && (
         <section className="runtime-inspector-section runtime-gaze-preview">
@@ -247,13 +249,13 @@ function TransitionTester({ transition, onPlay }: { transition: RuntimeTransitio
   return (
     <div className="runtime-transition-row">
       <div><strong>{transition.id}</strong><span>{ruleLabel}</span><small>{playback?.mode === "ping-pong" ? "正反往复" : "正向播放"}{playbackRange} · {cycleLabel} · 起始融合 {transition.entryBlendMs ?? 0}ms · {transition.endFrameSource === "video-frame" ? "结束于视频选帧" : transition.endFrameSource === "authority-reference" ? `${transition.authorityBridge.mode} 收口到权威图` : "回到同一源帧"} · {transition.transparentVideo ? "透明" : "普通"}</small></div>
-      <button type="button" title="直接测试这段过渡" onClick={() => onPlay(transition.id)}><Play size={14} weight="fill" /></button>
+      <Button type="default" htmlType="button" title="直接测试这段过渡" onClick={() => onPlay(transition.id)}><Play size={14} weight="fill" /></Button>
     </div>
   );
 }
 
 function PreviewBuildError({ error, onEdit }: { error: string | null; onEdit: () => void }) {
   return (
-    <div className="preview-build-error"><EyeSlash size={34} weight="thin" /><h1>还不能运行预览</h1><p>{error ?? "宠物包没有可用的实际展示状态。"}</p><span>请先在创作模式中批准必要内容，再回来验证最终效果。</span><button className="secondary-button" type="button" onClick={onEdit}><Graph size={15} />回到创作</button></div>
+    <div className="preview-build-error"><EyeSlash size={34} weight="thin" /><h1>还不能运行预览</h1><p>{error ?? "宠物包没有可用的实际展示状态。"}</p><span>请先在创作模式中批准必要内容，再回来验证最终效果。</span><Button type="default" className="secondary-button" htmlType="button" onClick={onEdit}><Graph size={15} />回到创作</Button></div>
   );
 }

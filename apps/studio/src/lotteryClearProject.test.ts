@@ -52,7 +52,7 @@ describe("Lottery clear real-photo project", () => {
     expect(actualCost).toBeLessThanOrEqual(30);
   });
 
-  it("lets a belly double-click interrupt a scheduled lying idle animation", () => {
+  it("lets a belly click interrupt a scheduled lying idle animation", () => {
     let now = 0;
     const manifest = buildPetPackage(lotteryClearProject);
     const core = new PetRuntimeCore(manifest, { now: () => now, random: () => 0 });
@@ -61,11 +61,11 @@ describe("Lottery clear real-photo project", () => {
     expect(core.fireDueSchedules(now)).toBe(true);
     expect(core.getSnapshot().activeTransitionId).toBe("template-rest-ear");
     now = 10_100;
-    expect(core.activatePointer("double-click", { x: 0.5, y: 0.55 }, now)).toEqual({ accepted: true });
+    expect(core.activatePointer("left-click", { x: 0.5, y: 0.55 }, now)).toEqual({ accepted: true });
     expect(core.getSnapshot()).toMatchObject({ currentStateId: "variant-clear-authority-state-lying", activeTransitionId: "template-rest-belly", phase: "video" });
   });
 
-  it("lets sitting respond to a head click and a double-click while its idle animation is playing", () => {
+  it("lets sitting respond to head and body clicks while its idle animation is playing", () => {
     let now = 0;
     const manifest = buildPetPackage(lotteryClearProject);
     const core = new PetRuntimeCore(manifest, { now: () => now, random: () => 0 });
@@ -78,7 +78,7 @@ describe("Lottery clear real-photo project", () => {
     expect(core.getSnapshot().activeTransitionId).toBe("template-sit-blink");
 
     now = 10_200;
-    expect(core.activatePointer("double-click", { x: 0.5, y: 0.55 }, now)).toEqual({ accepted: true });
+    expect(core.activatePointer("left-click", { x: 0.5, y: 0.55 }, now)).toEqual({ accepted: true });
     expect(core.getSnapshot()).toMatchObject({
       currentStateId: "variant-clear-authority-state-sitting",
       activeTransitionId: "template-sit-rest",
@@ -102,7 +102,7 @@ describe("Lottery clear real-photo project", () => {
 
     core.jumpToState("variant-clear-authority-state-lying", now);
     core.movePointer({ x: 0.5, y: 0.5 }, now);
-    expect(core.activatePointer("double-click", { x: 0.5, y: 0.5 }, now)).toEqual({ accepted: true });
+    expect(core.activatePointer("left-click", { x: 0.5, y: 0.5 }, now)).toEqual({ accepted: true });
     finish("template-rest-belly");
     expect(core.getSnapshot()).toMatchObject({ currentStateId: "variant-clear-authority-state-belly", activeTransitionId: null });
     expect(core.getSnapshot().nextHoverTrigger).toMatchObject({ transitionId: "template-belly-wiggle", dueAt: now + 500 });

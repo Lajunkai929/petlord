@@ -1,0 +1,929 @@
+{
+  "name": "彩票 · 原生像素试作",
+  "description": "已有原创像素试作的可编辑数据；用于演示工具流程，未宣称达到游戏成品美术质量。",
+  "document": {
+    "schemaVersion": 1,
+    "width": 48,
+    "height": 48,
+    "palette": {
+      ".": null,
+      "o": "#2b252d",
+      "b": "#3d343e",
+      "c": "#51454e",
+      "d": "#6a5960",
+      "t": "#76503e",
+      "u": "#a26b44",
+      "v": "#cc9457",
+      "w": "#e8b975",
+      "x": "#eed5a0",
+      "y": "#fff0c5",
+      "n": "#1d1c25"
+    },
+    "frames": [
+      {
+        "id": "sitting",
+        "layers": [
+          {
+            "id": "body",
+            "x": 0,
+            "y": 0,
+            "rows": [
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "...........o....................................",
+              ".........oooo................o..................",
+              ".........ouoooo...........oooo..................",
+              ".........owuuoo..........ooouoo.................",
+              ".........owuuuoo.........oouuoo.................",
+              ".........owuuuoo........ooovuuo.................",
+              ".........owuuuuooooooooooouvuuo.................",
+              ".........owuuuudddddddcooooouuo.................",
+              ".........ouooooddddddddddccouoo.................",
+              ".........ouodddddddddddddccoooo.................",
+              ".........ooodwwvdddcccwvvccccoo.................",
+              ".........ooocvvvvcccccvvvvbbboo.................",
+              "........oocccvvvccccccvvvcbbboo.................",
+              "........ooccbxnbbccccbxnbbbbbco.................",
+              "........ooccbnnbbccccbnnbbbbbbo.................",
+              "........oowwbnnbbccccbnnbbvvbbo.................",
+              "........oowwwvxxndnnxvvvvwwwbbo.................",
+              ".........ovwwxxynnnnnxvvwwwwvbo.................",
+              ".........ovwxxyxxntnxxxxwwwwboo.................",
+              ".........ooovxytxxtxxttxwwvvbooo................",
+              "...........ooxxyttyttxxxvvbooocoo...............",
+              "...........ooooxxxxxxvvvvbobbdcco...............",
+              "..............ooooooooooooobbbdboo..............",
+              "..............uuwwwwwwwvvuubbbbdcoo.............",
+              "..............uuvvvwvvvvuuubbbbbdco.............",
+              ".............ouuvvvvvoooooobbobbdcoooooo........",
+              ".............ooooovvvoooooobocooobooxyyyoo......",
+              ".............vvvoouvuovvvvooccccoocooxxxyo......",
+              ".............wvvoouuuowvvvooccccoobooxxxyoo.....",
+              "............owvvooouoowvvvoocccccooooxxxxuo.....",
+              "............vwvvvoocoowvvvoocccccooooxxxxoo.....",
+              "............vwvvvoocovwvvooocccccoooouxuuoo.....",
+              "...........ovwvvvoccowvvvooocccccooooouooo......",
+              "...........owvvvooovvwvvooocvvvuoocoooooo.......",
+              "..........ovvuvtooowwvvvoooouuuuoooo............",
+              "...........ooooooovvuvvtvoouuuuuuoo.............",
+              "..................oooooooo.oooooooo.............",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "resting",
+        "layers": [
+          {
+            "id": "body",
+            "x": 0,
+            "y": 0,
+            "rows": [
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "........o.......................................",
+              "......oooo................o.....................",
+              "......ouoooo...........oooo.....................",
+              "......owuuoo..........ooouoo....................",
+              "......owuuuoo.........oouuoo....................",
+              "......owuuuoo........ooovuuo....................",
+              "......owuuuuooooooooooouvuuo....................",
+              "......owuuuudddddddcooooouuo....................",
+              "......ouooooddddddddddccouoo....................",
+              "......ouodddddddddddddccoooo....................",
+              "......ooodwwvdddcccwvvccccoo....................",
+              "......ooocvvvvcccccvvvvbbboo....................",
+              ".....oocccvvvccccccvvvcbbboo....................",
+              ".....ooccbxnbbccccbxnbbbbbco....................",
+              ".....ooccbnnbbccccbnnbbbbbbooo..................",
+              ".....oowwbnnbbccccbnnbbvvbboddoo................",
+              ".....oowwwvxxndnnxvvvvwwwbboddddooo.............",
+              "......ovwwxxynnnnnxvvwwwwvboddccccoo............",
+              "......ovwxxyxxntnxxxxwwwwboccccbcccooooo........",
+              "......ooovxytxxtxxttxwwvvboccccbbbbooyyyoo......",
+              "........ooxxyttyttxxxvvbooocccbbbbbbooxxyo......",
+              "........ooooxxxxxxvvvvboccccccooobbbooxxyoo.....",
+              "...........ooooooooooooocccccbbbbobbboxxxuo.....",
+              "............ooooooccoccccccccbbbbobbboxxxoo.....",
+              "...........ovvvvvooovooooobbbbbbobbbooxuuoo.....",
+              ".........owwwwvvvoovvvvvvobbbooooooboouooo......",
+              ".........ovvvvvvovwwwwvvvooouuuuuoooooooo.......",
+              "........ovvtvvuvovvvvvvvvoouuuuuuuo.............",
+              ".........ooooooovvtvvvuvoo.oooooooo.............",
+              "................oooooooooo......................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sleeping",
+        "layers": [
+          {
+            "id": "body",
+            "x": 0,
+            "y": 0,
+            "rows": [
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "......oooo..............oooo....................",
+              "......ooooo............ooooo....................",
+              ".....oouuuooooooooooo.oooovo....................",
+              ".....oouuuuodddddddcooooovvoo...................",
+              ".....oouooooddddddddddccovvoo...................",
+              "......ouodddddddddddddccooooo...................",
+              "......ooodwwvdddcccwvvccccoo....................",
+              "......ooocvvvvcccccvvvvbbboooo..................",
+              ".....oocccvvvccccccvvvcbbbooddoo................",
+              ".....ooccbbbbbccccbbbbbbbbcoddddooo.............",
+              ".....ooccnnnnbccccnnnnbbbbboddccccoo............",
+              ".....oowwbvvvvccccbvvvvvvbbocccbcccooooo........",
+              ".....oowwwvxxndnnxvvvvwwwbbocccbbbbooyyyoo......",
+              "......ovwwxxynnnnnxvvwwwwvboccbbbbbbooxxyo......",
+              "......ovwxxyxxntnxxxxwwwwbocccooobbbooxxyoo.....",
+              "......ooovxytxxtxxttxwwvvboccbbbbobbboxxxuo.....",
+              "........ooxxyttyttxxxvvboooccbbbbobbboxxxoo.....",
+              "........ooooxxxxxxvvvvbooobbbbbbobbbooxuuoo.....",
+              ".........owooooooooooooovobbbooooooboouooo......",
+              ".........ovvvvvvovwwwwvvvooouuuuuoooooooo.......",
+              "........ovvtvvuvovvvvvvvvoouuuuuuuo.............",
+              ".........ooooooovvtvvvuvoo.oooooooo.............",
+              "................oooooooooo......................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "stretching",
+        "layers": [
+          {
+            "id": "body",
+            "x": 0,
+            "y": 0,
+            "rows": [
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "....oooo..............oooo......................",
+              "....ooooo............ooooo.............o........",
+              "...oouuuooooooooooo.oooovo.o.........ooyoo......",
+              "...oouuuuodddddddcooooovvooocooo.....oxxyo......",
+              "...oouooooddddddddddccovvoodddcco...ooxyxo......",
+              "....ouodddddddddddddccooooocccddcoo.oxxyuo......",
+              "....ooodwwvdddcccwvvccccoocccccbcooouxxxo.......",
+              "....ooocvvvvcccccvvvvbbboccccccbbcoouxxuo.......",
+              "...oocccvvvccccccvvvcbbbooccccbbbbbouxuo........",
+              "...ooccbbbbbccccbbbbbbbbcoccccbbbbboouuo........",
+              "...ooccnnnnbccccnnnnbbbbbocccbbbbbboooo.........",
+              "...oowwbvvvvccccbvvvvvvbbocccbbobbbboo..........",
+              "...oowwwvxxndnnxvvvvwwwbbocbbbboooooo...........",
+              "....ovwwxxynnnnnxvvwwwwvbobbbbbouuuo............",
+              "....ovwxxyxxntnxxxxwwwwbobbbbbbovuuo............",
+              "....ooovxytxxtxxttxwwvvboobbbbouvuoo............",
+              "......ooxxyttyttxxxvvboooobbbbovuuo.............",
+              "......ooooxxxxxxvvvvbovvoooooouvuoo.............",
+              ".......owooooooooooooovvoo...ouvuoo.............",
+              ".......ovvvvvvovvvwwvvoo....oouuuuoo............",
+              "......ovvtvvvovvwwvvvoo......ouuuuuoo...........",
+              ".......oooooovvtvvvuvvo......oooooooo...........",
+              ".............oooooooooo.........................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................",
+              "................................................"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sit-idle-2",
+        "baseFrameId": "sitting",
+        "patches": [
+          {
+            "layerId": "body",
+            "x": 36,
+            "y": 29,
+            "rows": [
+              "...oooo.",
+              "..oyyyo.",
+              "oouxxyxo",
+              "ouxxxxuo",
+              "ouxxxxo.",
+              "oxxxxuo.",
+              "ouxuoo..",
+              "ouuoo...",
+              "oooo....",
+              "o.......",
+              "o......."
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sit-idle-3",
+        "baseFrameId": "sit-idle-2",
+        "patches": [
+          {
+            "layerId": "body",
+            "x": 36,
+            "y": 26,
+            "rows": [
+              "...o....",
+              ".ooyoo..",
+              ".oxxyo..",
+              "ooxyxo..",
+              "oxxyuo..",
+              "uxxxo...",
+              "uxxuo...",
+              "oxuo....",
+              "ouuo....",
+              "ooo.....",
+              "oo......",
+              "o......."
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sit-idle-6",
+        "baseFrameId": "sitting",
+        "patches": [
+          {
+            "layerId": "body",
+            "x": 13,
+            "y": 19,
+            "rows": [
+              "bbbbccccbbbb",
+              "nnnbccccbnnn",
+              "bbubccccbbbu"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sit-idle-7",
+        "baseFrameId": "sit-idle-6",
+        "patches": [
+          {
+            "layerId": "body",
+            "x": 12,
+            "y": 20,
+            "rows": [
+              "nnnnbccccnnnnb",
+              "bvvvvccccbvvvv"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sit-idle-10",
+        "baseFrameId": "sitting",
+        "patches": [
+          {
+            "layerId": "body",
+            "x": 8,
+            "y": 6,
+            "rows": [
+              "........................",
+              "........................",
+              "........................",
+              "........................",
+              ".oooo..............oooo.",
+              ".ooooo............ooooo.",
+              "oouuuooooooooooo.oooovo.",
+              "oouuuuodddddddcooooovvoo",
+              "oouooooddddddddddccovvoo",
+              ".ouodddddddddddddccooooo",
+              ".ooodwwvdddcccwvvccccoo.",
+              ".ooocvvvvcccccvvvvbbbo.."
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sit-to-rest-2",
+        "baseFrameId": "sitting",
+        "patches": [
+          {
+            "layerId": "body",
+            "x": 8,
+            "y": 6,
+            "rows": [
+              ".......................",
+              "...o...................",
+              ".oooo................o.",
+              ".ouoooo...........oooo.",
+              ".owuuoo..........ooouoo",
+              ".owuuuoo.........oouuoo",
+              ".owuuuoo........ooovuuo",
+              ".owuuuuooooooooooouvuuo",
+              ".owuuuudddddddcooooouuo",
+              ".ouooooddddddddddccouoo",
+              ".ouodddddddddddddccoooo",
+              ".ooodwwvdddcccwvvccccoo",
+              ".ooocvvvvcccccvvvvbbboo",
+              "oocccvvvccccccvvvcbbboo",
+              "ooccbxnbbccccbxnbbbbbco",
+              "ooccbnnbbccccbnnbbbbbbo",
+              "oowwbnnbbccccbnnbbvvbbo",
+              "oowwwvxxndnnxvvvvwwwbbo",
+              ".ovwwxxynnnnnxvvwwwwvbo",
+              ".ovwxxyxxntnxxxxwwwwboo",
+              ".ooovxytxxtxxttxwwvvboc",
+              "...ooxxyttyttxxxvvboooc",
+              "...ooooxxxxxxvvvvbobbbd",
+              "......ooooooooooooobbbb"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sit-to-rest-3",
+        "baseFrameId": "sit-to-rest-2",
+        "patches": [
+          {
+            "layerId": "body",
+            "x": 12,
+            "y": 25,
+            "rows": [
+              "xxyxxntnxxxxwwwwbo.......",
+              "vxytxxtxxttxwwvvboo......",
+              "oxxyttyttxxxvvbooodoo....",
+              "oooxxxxxxvvvvboccbccco...",
+              ".uoooooooooooooccbbbbbo..",
+              ".uowvvovvvowvvocbbbbbbo..",
+              ".uowvvovvvowvvocbbbbbbooo",
+              ".uowvvovvvowvvobbbbbbbbox",
+              "oovwvoovvovwvoobbbbbbbbox",
+              "oovwvoovvovwvoobbbbbobbox",
+              "oovwvoovuovwvoobboocoobox",
+              "oowvvoouovwvvobbocccoooox",
+              "ovwvvouuovwvvobbcccccooou",
+              "owvvvocovwvvobboccccooooo",
+              "vwvvvooovwvvoboccccoooo.o",
+              "vuvvtvovwvvvooocuuuucoo..",
+              "oooooovvuvvtvooooooooo...",
+              "......ooooooo............"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sit-to-rest-4",
+        "baseFrameId": "sit-to-rest-3",
+        "patches": [
+          {
+            "layerId": "body",
+            "x": 7,
+            "y": 7,
+            "rows": [
+              ".............................",
+              "...o.........................",
+              ".oooo................o.......",
+              ".ouoooo...........oooo.......",
+              ".owuuoo..........ooouoo......",
+              ".owuuuoo.........oouuoo......",
+              ".owuuuoo........ooovuuo......",
+              ".owuuuuooooooooooouvuuo......",
+              ".owuuuudddddddcooooouuo......",
+              ".ouooooddddddddddccouoo......",
+              ".ouodddddddddddddccoooo......",
+              ".ooodwwvdddcccwvvccccoo......",
+              ".ooocvvvvcccccvvvvbbboo......",
+              "oocccvvvccccccvvvcbbboo......",
+              "ooccbxnbbccccbxnbbbbbco......",
+              "ooccbnnbbccccbnnbbbbbbo......",
+              "oowwbnnbbccccbnnbbvvbbo......",
+              "oowwwvxxndnnxvvvvwwwbbo......",
+              ".ovwwxxynnnnnxvvwwwwvbo......",
+              ".ovwxxyxxntnxxxxwwwwboo......",
+              ".ooovxytxxtxxttxwwvvbooo.....",
+              "...ooxxyttyttxxxvvboooddoo...",
+              "...ooooxxxxxxvvvvbocccbccco..",
+              "......oooooooooooooocbbbbbbo.",
+              "......uowvvovvvowvvocbbbbbbo.",
+              "......uowvvovvvowvvobbbbbbboo",
+              ".....ooowvvovvoowvvobbbbbbbbo",
+              ".....oovwvoovvovwvoobbbbbobbo",
+              ".....oovwvoovuovwvoobboocoobo",
+              ".....ovwvvouuovwvvobbocccoooo",
+              "....oowvvvouovwvvobbbcccccooo",
+              "...oovwvvocoovwvvobboccccoooo",
+              "...ovwvvvooovwvvocboccccoooo.",
+              "..ovvuvvtvovwvvvoooocuuuucoo.",
+              "...ooooooovvuvvtvoooooooooo..",
+              "..........ooooooo............"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sit-to-rest-5",
+        "baseFrameId": "sit-to-rest-4",
+        "patches": [
+          {
+            "layerId": "body",
+            "x": 6,
+            "y": 8,
+            "rows": [
+              "...............................",
+              "...............................",
+              "...o...........................",
+              ".oooo................o.........",
+              ".ouoooo...........oooo.........",
+              ".owuuoo..........ooouoo........",
+              ".owuuuoo.........oouuoo........",
+              ".owuuuoo........ooovuuo........",
+              ".owuuuuooooooooooouvuuo........",
+              ".owuuuudddddddcooooouuo........",
+              ".ouooooddddddddddccouoo........",
+              ".ouodddddddddddddccoooo........",
+              ".ooodwwvdddcccwvvccccoo........",
+              ".ooocvvvvcccccvvvvbbboo........",
+              "oocccvvvccccccvvvcbbboo........",
+              "ooccbxnbbccccbxnbbbbbco........",
+              "ooccbnnbbccccbnnbbbbbbo........",
+              "oowwbnnbbccccbnnbbvvbbo........",
+              "oowwwvxxndnnxvvvvwwwbbo........",
+              ".ovwwxxynnnnnxvvwwwwvboo.......",
+              ".ovwxxyxxntnxxxxwwwwbodoo......",
+              ".ooovxytxxtxxttxwwvvbocddoo....",
+              "...ooxxyttyttxxxvvbooocbccco...",
+              "...ooooxxxxxxvvvvbooocbbbbbbo.o",
+              "......ooooooooooooovocbbbbbboox",
+              "......ouowvvovvvowvvobbbbbbbboo",
+              "......oovwvoovvovwvoobbbbbobboo",
+              "......oovwvoovuovwvoobboocoobbo",
+              "......ovwvvouuovwvvobbocccooobo",
+              "....oovwvvouuovwvvobbbcccccooco",
+              "...oovwvvvooovwvvocbboccccooboo",
+              "...ovwvvvooovwvvvccboccccooocoo",
+              "..ovvuvvtvovwvvvooooocuuuucoo..",
+              "...ooooooovvuvvtvooooooooooo...",
+              "..........ooooooo.............."
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sit-to-rest-6",
+        "baseFrameId": "sit-to-rest-5",
+        "patches": [
+          {
+            "layerId": "body",
+            "x": 5,
+            "y": 10,
+            "rows": [
+              ".................................",
+              ".................................",
+              "...o.............................",
+              ".oooo................o...........",
+              ".ouoooo...........oooo...........",
+              ".owuuoo..........ooouoo..........",
+              ".owuuuoo.........oouuoo..........",
+              ".owuuuoo........ooovuuo..........",
+              ".owuuuuooooooooooouvuuo..........",
+              ".owuuuudddddddcooooouuo..........",
+              ".ouooooddddddddddccouoo..........",
+              ".ouodddddddddddddccoooo..........",
+              ".ooodwwvdddcccwvvccccoo..........",
+              ".ooocvvvvcccccvvvvbbboo..........",
+              "oocccvvvccccccvvvcbbboo..........",
+              "ooccbxnbbccccbxnbbbbbco..........",
+              "ooccbnnbbccccbnnbbbbbbo..........",
+              "oowwbnnbbccccbnnbbvvbbo..........",
+              "oowwwvxxndnnxvvvvwwwbbooo........",
+              ".ovwwxxynnnnnxvvwwwwvbodoo.......",
+              ".ovwxxyxxntnxxxxwwwwboccddoo.....",
+              ".ooovxytxxtxxttxwwvvboccbccco..oo",
+              "...ooxxyttyttxxxvvbooocbbbbbbooxy",
+              "...ooooxxxxxxvvvvbovvobbbbbbbboox",
+              "......ooooooooooooovvobbbbbobbooo",
+              ".......oovwvoovuovwvoobboocoobboo",
+              ".......ovwvvouuovwvvobbocccoooboo",
+              ".....oovwvvouuovwvvobbbcccccoobbo",
+              "....oovwvvvooovwvvocbboccccoobcco",
+              "....ovwvvvooovwvvvccboccccoooccoo",
+              "...ovvuvvtvovwvvvooooocuuuucooc.."
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sit-to-rest-7",
+        "baseFrameId": "sit-to-rest-6",
+        "patches": [
+          {
+            "layerId": "body",
+            "x": 5,
+            "y": 12,
+            "rows": [
+              ".................................",
+              ".................................",
+              "...o.............................",
+              ".oooo................o...........",
+              ".ouoooo...........oooo...........",
+              ".owuuoo..........ooouoo..........",
+              ".owuuuoo.........oouuoo..........",
+              ".owuuuoo........ooovuuo..........",
+              ".owuuuuooooooooooouvuuo..........",
+              ".owuuuudddddddcooooouuo..........",
+              ".ouooooddddddddddccouoo..........",
+              ".ouodddddddddddddccoooo..........",
+              ".ooodwwvdddcccwvvccccoo..........",
+              ".ooocvvvvcccccvvvvbbboo..........",
+              "oocccvvvccccccvvvcbbboo..........",
+              "ooccbxnbbccccbxnbbbbbcooo........",
+              "ooccbnnbbccccbnnbbbbbboddoo......",
+              "oowwbnnbbccccbnnbbvvbboddddooo...",
+              "oowwwvxxndnnxvvvvwwwbboddccccoo..",
+              ".ovwwxxynnnnnxvvwwwwvbocccbcccooo",
+              ".ovwxxyxxntnxxxxwwwwboccccbbbbooy",
+              ".ooovxytxxtxxttxwwvvbocccbbbbbboo",
+              "...ooxxyttyttxxxvvbooocccooobbboo",
+              "...ooooxxxxxxvvvvbocccccbbbbobbbo",
+              "......ooooooooooooocccccbbbbobbbo",
+              "......ovvvvvooovooooobbbbbbobbboo",
+              "....owwwwvvvoovvvvvvobbbooooooboo",
+              "....ovvvvvvovwwwwvvvooouuuuuooooo",
+              "...ovvtvvuvovvvvvvvvoouuuuuuuo...",
+              "....ooooooovvtvvvuvoo.oooooooo...",
+              "...........oooooooooo............"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "rest-to-sleep-2",
+        "baseFrameId": "resting",
+        "patches": [
+          {
+            "layerId": "body",
+            "x": 10,
+            "y": 26,
+            "rows": [
+              "bbbbccccbbbb",
+              "nnnbccccbnnn",
+              "bbubccccbbbu"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "rest-to-sleep-4",
+        "baseFrameId": "resting",
+        "patches": [
+          {
+            "layerId": "body",
+            "x": 5,
+            "y": 13,
+            "rows": [
+              ".......................",
+              "...o...................",
+              ".oooo................o.",
+              ".ouoooo...........oooo.",
+              ".owuuoo..........ooouoo",
+              ".owuuuoo.........oouuoo",
+              ".owuuuoo........ooovuuo",
+              ".owuuuuooooooooooouvuuo",
+              ".owuuuudddddddcooooouuo",
+              ".ouooooddddddddddccouoo",
+              ".ouodddddddddddddccoooo",
+              ".ooodwwvdddcccwvvccccoo",
+              ".ooocvvvvcccccvvvvbbboo",
+              "oocccvvvccccccvvvcbbboo",
+              "ooccbbbbbccccbbbbbbbbco",
+              "ooccbnnnbccccbnnnbbbbbo",
+              "oowwbbbubccccbbbubvvbbo",
+              "oowwwvxxndnnxvvvvwwwbbo",
+              ".ovwwxxynnnnnxvvwwwwvbo",
+              ".ovwxxyxxntnxxxxwwwwboc",
+              ".ooovxytxxtxxttxwwvvboc",
+              "...ooxxyttyttxxxvvboooc",
+              "...ooooxxxxxxvvvvbocccc",
+              "......ooooooooooooocccc"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "rest-to-sleep-5",
+        "baseFrameId": "rest-to-sleep-4",
+        "patches": [
+          {
+            "layerId": "body",
+            "x": 9,
+            "y": 28,
+            "rows": [
+              "nnnnbccccnnnnb",
+              "bvvvvccccbvvvv"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "rest-to-sleep-6",
+        "baseFrameId": "rest-to-sleep-5",
+        "patches": [
+          {
+            "layerId": "body",
+            "x": 5,
+            "y": 14,
+            "rows": [
+              ".......................",
+              "...o...................",
+              ".oooo................o.",
+              ".ouoooo...........oooo.",
+              ".owuuoo..........ooouoo",
+              ".owuuuoo.........oouuoo",
+              ".owuuuoo........ooovuuo",
+              ".owuuuuooooooooooouvuuo",
+              ".owuuuudddddddcooooouuo",
+              ".ouooooddddddddddccouoo",
+              ".ouodddddddddddddccoooo",
+              ".ooodwwvdddcccwvvccccoo",
+              ".ooocvvvvcccccvvvvbbboo",
+              "oocccvvvccccccvvvcbbboo",
+              "ooccbbbbbccccbbbbbbbbco",
+              "ooccnnnnbccccnnnnbbbbbo",
+              "oowwbvvvvccccbvvvvvvbbo",
+              "oowwwvxxndnnxvvvvwwwbbo",
+              ".ovwwxxynnnnnxvvwwwwvbo",
+              ".ovwxxyxxntnxxxxwwwwboc",
+              ".ooovxytxxtxxttxwwvvboc",
+              "...ooxxyttyttxxxvvboooc",
+              "...ooooxxxxxxvvvvbocccc",
+              "......ooooooooooooooobb"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sleep-idle-2",
+        "baseFrameId": "sleeping",
+        "patches": [
+          {
+            "layerId": "body",
+            "x": 27,
+            "y": 26,
+            "rows": [
+              "ooo...",
+              "dddoo.",
+              "odddoo",
+              "oddddc"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "states": [
+    {
+      "id": "sitting",
+      "label": "坐着",
+      "semanticKey": "idle",
+      "frameId": "sitting"
+    },
+    {
+      "id": "resting",
+      "label": "趴着",
+      "semanticKey": "rest",
+      "frameId": "resting"
+    },
+    {
+      "id": "sleeping",
+      "label": "睡觉",
+      "semanticKey": "sleep",
+      "frameId": "sleeping"
+    },
+    {
+      "id": "stretching",
+      "label": "伸懒腰",
+      "semanticKey": "stretch",
+      "frameId": "stretching"
+    }
+  ],
+  "animations": [
+    {
+      "id": "sit-idle",
+      "label": "坐姿待机 · 摇尾与眨眼",
+      "fromStateId": "sitting",
+      "toStateId": "sitting",
+      "loop": true,
+      "frames": [
+        {
+          "frameId": "sitting",
+          "durationMs": 800
+        },
+        {
+          "frameId": "sit-idle-2",
+          "durationMs": 120
+        },
+        {
+          "frameId": "sit-idle-3",
+          "durationMs": 160
+        },
+        {
+          "frameId": "sit-idle-2",
+          "durationMs": 120
+        },
+        {
+          "frameId": "sitting",
+          "durationMs": 800
+        },
+        {
+          "frameId": "sit-idle-6",
+          "durationMs": 80
+        },
+        {
+          "frameId": "sit-idle-7",
+          "durationMs": 100
+        },
+        {
+          "frameId": "sit-idle-6",
+          "durationMs": 80
+        },
+        {
+          "frameId": "sitting",
+          "durationMs": 800
+        },
+        {
+          "frameId": "sit-idle-10",
+          "durationMs": 100
+        },
+        {
+          "frameId": "sitting",
+          "durationMs": 400
+        }
+      ]
+    },
+    {
+      "id": "sit-to-rest",
+      "label": "坐着 → 趴下",
+      "fromStateId": "sitting",
+      "toStateId": "resting",
+      "loop": false,
+      "frames": [
+        {
+          "frameId": "sitting",
+          "durationMs": 300
+        },
+        {
+          "frameId": "sit-to-rest-2",
+          "durationMs": 120
+        },
+        {
+          "frameId": "sit-to-rest-3",
+          "durationMs": 100
+        },
+        {
+          "frameId": "sit-to-rest-4",
+          "durationMs": 100
+        },
+        {
+          "frameId": "sit-to-rest-5",
+          "durationMs": 120
+        },
+        {
+          "frameId": "sit-to-rest-6",
+          "durationMs": 140
+        },
+        {
+          "frameId": "sit-to-rest-7",
+          "durationMs": 120
+        },
+        {
+          "frameId": "resting",
+          "durationMs": 500
+        }
+      ]
+    },
+    {
+      "id": "rest-to-sleep",
+      "label": "趴着 → 入睡",
+      "fromStateId": "resting",
+      "toStateId": "sleeping",
+      "loop": false,
+      "frames": [
+        {
+          "frameId": "resting",
+          "durationMs": 700
+        },
+        {
+          "frameId": "rest-to-sleep-2",
+          "durationMs": 180
+        },
+        {
+          "frameId": "resting",
+          "durationMs": 350
+        },
+        {
+          "frameId": "rest-to-sleep-4",
+          "durationMs": 280
+        },
+        {
+          "frameId": "rest-to-sleep-5",
+          "durationMs": 240
+        },
+        {
+          "frameId": "rest-to-sleep-6",
+          "durationMs": 280
+        },
+        {
+          "frameId": "sleeping",
+          "durationMs": 350
+        },
+        {
+          "frameId": "sleeping",
+          "durationMs": 900
+        }
+      ]
+    },
+    {
+      "id": "sleep-idle",
+      "label": "睡觉 · 轻轻呼吸",
+      "fromStateId": "sleeping",
+      "toStateId": "sleeping",
+      "loop": true,
+      "frames": [
+        {
+          "frameId": "sleeping",
+          "durationMs": 900
+        },
+        {
+          "frameId": "sleep-idle-2",
+          "durationMs": 700
+        },
+        {
+          "frameId": "sleeping",
+          "durationMs": 1000
+        }
+      ]
+    }
+  ]
+}

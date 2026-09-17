@@ -54,7 +54,7 @@ describe("Lottery high-resolution master sample", () => {
       .every((artifact) => artifact.pixelWidth === 720 && artifact.pixelHeight === 720 && artifact.silent && artifact.hasAlpha)).toBe(true);
   });
 
-  it("runs click, double-click, hover, inactivity and ToDo paths in the shared runtime", () => {
+  it("runs click, hover, inactivity and ToDo paths in the shared runtime", () => {
     let now = 0;
     const manifest = buildPetPackage(lotteryHiResProject);
     const core = new PetRuntimeCore(manifest, { now: () => now, random: () => 0 });
@@ -72,7 +72,7 @@ describe("Lottery high-resolution master sample", () => {
     expect(core.getSnapshot().activeTransitionId).toBe("recipe-companion-rest-ear");
     finish("recipe-companion-rest-ear");
 
-    expect(core.activatePointer("double-click", { x: 0.5, y: 0.5 }, now)).toEqual({ accepted: true });
+    expect(core.activatePointer("left-click", { x: 0.5, y: 0.5 }, now)).toEqual({ accepted: true });
     finish("recipe-companion-rest-belly");
     core.movePointer({ x: 0.5, y: 0.5 }, now);
     now += 500;
@@ -88,7 +88,7 @@ describe("Lottery high-resolution master sample", () => {
     expect(core.getSnapshot().activeTransitionId).toBe("recipe-companion-rest-sleep");
     finish("recipe-companion-rest-sleep");
 
-    expect(core.activatePointer("double-click", { x: 0.5, y: 0.5 }, now)).toEqual({ accepted: true });
+    expect(core.activatePointer("left-click", { x: 0.5, y: 0.5 }, now)).toEqual({ accepted: true });
     finish("recipe-companion-sleep-wake");
     expect(core.performSemanticAction("greet", now)).toEqual({ accepted: true });
     expect(core.getSnapshot().activeTransitionId).toBe("recipe-companion-rest-greet");

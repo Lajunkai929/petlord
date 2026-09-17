@@ -1,3 +1,6 @@
+import { createDeferredPetActions } from "../deferredPetActions";
+import { createAgentActivityLoop } from "../agentActivityLoop";
+import { createCompanionPlaybackReporter } from "../companionPlayback";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type PointerEvent } from "react";
 import { TodoController, type TodoItem } from "@petlord/plugin-todo";
 import { AgentActivityController } from "@petlord/plugin-agent-activity";
@@ -19,6 +22,7 @@ function pointFromEvent(event: MouseEvent<HTMLElement> | PointerEvent<HTMLElemen
 function createContext(pluginId: string, input: {
   getSnapshot: () => PetSnapshot;
   perform: (action: string) => Promise<{ accepted: boolean; reason?: string }>;
+  setActivityLoop: (action: string | null) => Promise<{accepted: boolean; reason?: string}>;
   onSpeak: (message: string, durationMs?: number) => void;
   listeners: Set<(snapshot: PetSnapshot) => void>;
   events: PetPluginContext["events"];
@@ -32,6 +36,7 @@ function createContext(pluginId: string, input: {
     pet: {
       async getSnapshot() { return input.getSnapshot(); },
       perform: input.perform,
+      setActivityLoop: input.setActivityLoop,
       async speak(message, options) { input.onSpeak(message, options?.durationMs); },
       onStateChanged(listener) {
         input.listeners.add(listener);
@@ -92,8 +97,15 @@ export function useDesktopRuntime() {
   const agentIntegrations = useAgentIntegrations();
   const manifest = petPackage.manifest;
   const petRuntime = usePetRuntime(manifest);
+  const activityRuntimeId = useMemo(()=>crypto.randomUUID(),[petRuntime.core]);
   const petRuntimeRef = useRef(petRuntime);
   petRuntimeRef.current = petRuntime;
+  const activityLoopRef = useRef<ReturnType<typeof createAgentActivityLoop> | undefined>(undefined);
+  const [companionFacing,setCompanionFacing] = useState<"left"|"right">("left");
+  useEffect(()=>{if(!petRuntime.core||!manifest)return;const controller=createAgentActivityLoop(petRuntime.core,manifest);activityLoopRef.current=controller;return()=>{controller.dispose();activityLoopRef.current=undefined;};},[petRuntime.core,manifest]);
+  useEffect(()=>{if(!petRuntime.core||!manifest)return;const reporter=createCompanionPlaybackReporter(manifest,input=>window.petLordDesktop?.companionPlayback?.(input));const unsubscribe=petRuntime.core.subscribe(()=>reporter.consume(petRuntime.core!.getSnapshot().events));return()=>{unsubscribe();reporter.dispose();};},[petRuntime.core,manifest]);
+  useEffect(()=>window.petLordDesktop?.onCompanionFacing?.(setCompanionFacing),[]);
+  useEffect(()=>window.petLordDesktop?.onCompanionAction?.(action=>{if(!manifest)return;activityLoopRef.current?.set(null);const runtime=petRuntimeRef.current;runtime.interruptPointerGaze();if(action==="idle"){runtime.jumpToState(manifest!.initialStateId);return;}void runtime.performAction(action).then(result=>{if(!result.accepted)setSpeech(result.reason??"当前宠物没有这个动作");});}),[manifest]);
   const [items, setItems] = useState<TodoItem[]>([]);
   const [title, setTitle] = useState("");
   const [speech, setSpeech] = useState("");
@@ -118,13 +130,25 @@ export function useDesktopRuntime() {
   const showSpeech = useCallback((message: string, durationMs = 4200) => {
     setSpeech(message);
     if (speechTimerRef.current) window.clearTimeout(speechTimerRef.current);
-    speechTimerRef.current = window.setTimeout(() => setSpeech(""), durationMs);
+    if(durationMs>0)speechTimerRef.current = window.setTimeout(() => setSpeech(""), durationMs);
   }, []);
+  useEffect(()=>window.petLordDesktop?.onDesktopWaste?.(result=>{showSpeech(result.ok?(result.warnings?.length?"文件已留下；图标或位置受系统限制，请在设置中查看。":"桌面上留下了一点小纪念，可以移到废纸篓。"):result.error??"无法创建桌面文件。",6000);}),[showSpeech]);
+  const deferredActions = useMemo(()=>createDeferredPetActions(()=>Boolean(dragGestureRef.current?.dragging || petRuntimeRef.current.dragActive || petRuntimeRef.current.dragReturnPending),action=>petRuntimeRef.current.performAction(action)),[]);
+  useEffect(()=>{
+    const held=windowDragActive || petRuntime.dragActive || petRuntime.dragReturnPending;
+    let cancelled=false;
+    if(held)activityLoopRef.current?.suspend(true);
+    else void deferredActions.flush().catch(()=>undefined).finally(()=>{if(!cancelled)activityLoopRef.current?.suspend(false);});
+    window.petLordDesktop?.setPetDragging?.(windowDragActive || petRuntime.dragActive);
+    return()=>{cancelled=true;};
+  },[deferredActions,windowDragActive,petRuntime.dragActive,petRuntime.dragReturnPending,manifest?.id]);
   const pluginDeclarations = useMemo(() => manifest?.plugins ?? [], [manifest]);
+  useEffect(()=>()=>deferredActions.clear(),[deferredActions,manifest?.id]);
   const pluginContextFactory = useCallback((pluginId: string) => createContext(pluginId, {
     getSnapshot: () => snapshotRef.current,
     perform: (action) => performRef.current(action),
     onSpeak: showSpeech,
+    setActivityLoop: async action => activityLoopRef.current?.set(action) ?? {accepted:false,reason:"宠物尚未载入"},
     listeners: listenersRef.current,
     events: agentBridge.events,
     integrations: agentBridge.integrations,
@@ -138,8 +162,8 @@ export function useDesktopRuntime() {
   const plugins = usePluginRuntime(pluginDeclarations, pluginContextFactory, settings);
 
   useEffect(() => {
-    performRef.current = petRuntime.performAction;
-  }, [petRuntime.performAction]);
+    performRef.current = deferredActions.perform;
+  }, [deferredActions]);
 
   useEffect(() => {
     const mode = settings.settings.gazeTrackingArea;
@@ -185,13 +209,14 @@ export function useDesktopRuntime() {
 
   useEffect(() => {
     const snapshot: PetSnapshot = {
+      runtimeId: activityRuntimeId,
       stateId: petRuntime.snapshot.currentStateId,
       logicalStateId: petRuntime.currentState?.logicalStateId ?? "",
       availableActions: Object.keys(manifest?.semanticActions ?? {}),
     };
     snapshotRef.current = snapshot;
     for (const listener of listenersRef.current) listener(snapshot);
-  }, [manifest?.semanticActions, petRuntime.currentState?.logicalStateId, petRuntime.snapshot.currentStateId]);
+  }, [activityRuntimeId,manifest?.semanticActions, petRuntime.currentState?.logicalStateId, petRuntime.snapshot.currentStateId]);
 
   useEffect(() => {
     const controller = plugins.session<TodoController>("petlord.todo");
@@ -237,8 +262,10 @@ export function useDesktopRuntime() {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     if (!gesture.dragging && Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) < 6) return;
     if (!gesture.dragging) {
+      activityLoopRef.current?.suspend(true);
+      window.petLordDesktop?.setPetDragging?.(true);
       gesture.dragging = petRuntime.dragInteraction ? petRuntime.beginDrag().accepted : true;
-      if (!gesture.dragging) return;
+      if (!gesture.dragging) {activityLoopRef.current?.suspend(false);window.petLordDesktop?.setPetDragging?.(false);return;}
       setWindowDragActive(true);
       setDragTransitionMs(window.petLordDesktop ? 0 : petRuntime.dragInteraction?.alignmentDurationMs ?? 0);
     } else if (!window.petLordDesktop) setDragTransitionMs(48);
@@ -321,6 +348,7 @@ export function useDesktopRuntime() {
 
   return {
     ...petPackage,
+    companionFacing,
     settings,
     plugins,
     agentIntegrations,

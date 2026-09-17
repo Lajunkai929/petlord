@@ -39,6 +39,10 @@ describe("customer project templates", () => {
     expect(project.transitions.find((transition) => transition.id === "template-sleep-breathe")?.idleRule?.weight).toBe(50);
     expect(project.transitions.find((transition) => transition.id === "template-sleep-dream")?.idleRule?.weight).toBe(1);
     expect(project.transitions.find((transition) => transition.id === "template-rest-belly")?.triggers[0]?.region).toEqual({ shape: "ellipse", x: 0.04, y: 0.04, width: 0.92, height: 0.92 });
+    expect(project.transitions.flatMap(t=>t.triggers).some(t=>t.event==="double-click")).toBe(false);
+    expect(project.transitions.find(t=>t.id==="template-sleep-wake")?.triggers[0].event).toBe("left-click");
+    expect(project.transitions.find(t=>t.id==="template-sit-blink")?.triggers[0]).toMatchObject({ event: "left-click", region: { width: 0.48, height: 0.5 } });
+    expect(project.transitions.findIndex(t=>t.id==="template-rest-sit")).toBeLessThan(project.transitions.findIndex(t=>t.id==="template-rest-belly"));
   });
 
   it("creates a truly blank project or a complete fixed interaction graph", () => {
@@ -172,4 +176,8 @@ describe("customer project templates", () => {
     expect(state?.preferredOutboundVariantId).toBe("tail-variant");
     expect(migrated.initialVariantId).toBe("variant-authority-state-sitting-authority");
   });
+});
+it('creates an explicitly selected native project without injecting a legacy route',()=>{
+ expect(createBlankProject({...input,productionRoute:'native-pixel'}).productionRoute).toBe('native-pixel');
+ expect(createBlankProject(input)).not.toHaveProperty('productionRoute');
 });

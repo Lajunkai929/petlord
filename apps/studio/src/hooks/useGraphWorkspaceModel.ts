@@ -56,6 +56,7 @@ export function useGraphWorkspaceModel(
         semanticKey: state.semanticKey,
         variantCount: variants.length,
         thumbnail: imageArtifactId ? artifacts.get(imageArtifactId)?.uri : undefined,
+        thumbnailNative: Boolean(imageArtifactId && artifacts.get(imageArtifactId)?.nativePixel),
         hasAuthority: Boolean(state.referenceArtifactId),
         hasActualVariant: variants.length > 0,
         idleCount,

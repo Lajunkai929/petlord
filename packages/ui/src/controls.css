@@ -1,0 +1,46 @@
+/* Shared form, action and dialog contracts; application CSS owns layout. */
+.pl-field { display: flex; min-width: 0; flex-direction: column; align-items: stretch; gap: var(--space-2); }
+.pl-field > label { color: var(--text-soft); font-size: var(--font-sm); line-height: var(--line-sm); font-weight: var(--weight-medium); }
+.pl-field-hint, .pl-field-error { margin: 0; font-size: var(--font-xs); line-height: var(--line-sm); }
+.pl-field-hint { color: var(--text-muted); }
+.pl-field-error { color: var(--danger); }
+.pl-field > .pl-select-control { width: 100%; }
+
+.pl-dialog { position: fixed; top: 50%; left: 50%; z-index: var(--layer-dialog); width: min(560px, calc(100vw - var(--space-8))); max-height: calc(100dvh - 48px); overflow: auto; padding: var(--space-6); border: 1px solid var(--border); border-radius: var(--radius-dialog); background: var(--surface); color: var(--text); box-shadow: 0 16px 48px rgba(var(--shadow-rgb), .2); transform: translate(-50%, -50%); }
+.pl-dialog :is(.dialog-heading, .entity-dialog-heading) { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-6); }
+.pl-dialog :is(.dialog-heading, .entity-dialog-heading) h2 { margin: 0; color: var(--text); font-size: var(--font-dialog); line-height: var(--line-dialog); font-weight: var(--weight-semibold); letter-spacing: -.02em; }
+.pl-dialog :is(.dialog-heading, .entity-dialog-heading) p { margin: var(--space-2) 0 0; color: var(--text-muted); font-size: var(--font-body); line-height: var(--line-body); }
+.pl-dialog :is(.dialog-actions, .entity-dialog-footer) { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-6); padding-top: var(--space-4); border-top: 1px solid var(--border); }
+.pl-dialog .ant-btn[aria-label="关闭"] { flex: 0 0 auto; width: var(--control-height); }
+
+/* Native file/range/color inputs remain browser controls. Text fallbacks use the same metrics. */
+input:where(:not(.ant-input):not([role="combobox"]):not([type="file"]):not([type="range"]):not([type="color"]):not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([aria-hidden="true"])),
+textarea:where(:not(.ant-input)) { box-sizing: border-box; min-width: 0; height: var(--control-height); padding: 0 var(--control-padding-inline); border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface-raised); color: var(--text); font-family: var(--font-sans); font-size: var(--font-body); line-height: var(--line-body); }
+textarea:where(:not(.ant-input)) { height: auto; padding-block: var(--space-2); resize: vertical; }
+input:where([type="checkbox"],[type="radio"]) { accent-color: var(--accent); }
+
+/* Existing file-label actions and domain controls share the primitive dimensions. */
+:where(.primary-button,.secondary-button,.ghost-button,.settings-primary-action,.settings-secondary-action) { box-sizing: border-box; display: inline-flex; height: var(--control-height); min-height: var(--control-height); align-items: center; justify-content: center; gap: var(--space-2); padding: 0 var(--control-padding-inline); border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface-raised); color: var(--text); font-family: var(--font-sans); font-size: var(--font-body); font-weight: var(--weight-semibold); line-height: var(--line-body); white-space: nowrap; cursor: pointer; transition: background-color var(--motion-standard), border-color var(--motion-standard); }
+:where(.primary-button,.settings-primary-action) { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+:where(.primary-button,.settings-primary-action):hover:not(:disabled) { border-color: var(--accent-strong); background: var(--accent-strong); }
+:where(.secondary-button,.settings-secondary-action):hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-hover); }
+:where(.ghost-button) { border-color: transparent; background: transparent; }
+:where(.primary-button,.secondary-button,.ghost-button,.settings-primary-action,.settings-secondary-action):disabled { opacity: .45; cursor: not-allowed; }
+:where(.compact-button) { height: var(--control-compact); min-height: var(--control-compact); font-size: var(--font-sm); }
+:where(.icon-button) { display: inline-flex; width: var(--control-height); height: var(--control-height); flex: 0 0 auto; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface-raised); color: var(--text-soft); cursor: pointer; }
+
+/* Unlayered library styles take precedence over legacy application paint. */
+.ant-btn, .ant-select, .ant-input-number, input.ant-input { min-height: 0; }
+/* Intrinsic input padding can round differently at non-default font preferences. */
+input.ant-input:not(.ant-input-affix-wrapper input), .ant-input-affix-wrapper, .ant-select.ant-select-single, .ant-input-number { height: var(--control-height); }
+input.ant-input.ant-input-sm:not(.ant-input-affix-wrapper input), .ant-input-affix-wrapper.ant-input-affix-wrapper-sm, .ant-select.ant-select-single.ant-select-sm, .ant-input-number.ant-input-number-sm { height: var(--control-compact); }
+input.ant-input.ant-input-lg:not(.ant-input-affix-wrapper input), .ant-input-affix-wrapper.ant-input-affix-wrapper-lg, .ant-select.ant-select-single.ant-select-lg, .ant-input-number.ant-input-number-lg { height: var(--control-large); }
+.ant-select.ant-select-sm { font-size: var(--font-sm); line-height: var(--line-sm); }
+.pl-select-control { height: auto; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.ant-checkbox-label { min-width: 0; }
+
+/* Navigation keeps the same Button variant so selection never replaces its focused DOM node. */
+.ant-btn[aria-current="page"] { background-color: var(--accent-soft); color: var(--accent); }
+
+.dialog-overlay[data-state], .import-dialog-overlay[data-state] { z-index: var(--layer-overlay); }
+.pl-dialog[data-state] { z-index: var(--layer-dialog); }

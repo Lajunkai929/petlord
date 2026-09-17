@@ -2,7 +2,20 @@ import { describe, expect, it } from "vitest";
 import { lotteryHiResProject } from "../lotteryHiResProject";
 import { lotteryStardewProject } from "../lotteryStardewProject";
 import { lotteryClearProject } from "../lotteryClearProject";
-import { refreshBundledProject } from "./useProjectWorkspace";
+import { activateProjectAfterPersist, migrateProjectsAndIdentities, refreshBundledProject } from "./useProjectWorkspace";
+import { createBlankIdentityProfile, createBlankProject } from "../projectTemplate";
+
+it("treats existing shared references as authoritative while preserving project-only artwork", () => {
+  const project = createBlankProject({ characterName: "Pet", customerName: "", contact: "", quotedPriceCny: 0, depositCny: 0, revisionLimit: 0, notes: "" });
+  const identity = createBlankIdentityProfile("Pet");
+  const old = { id: "old", kind: "identity-reference" as const, uri: "data:image/png;base64,T0xE", mimeType: "image/png", createdAt: project.updatedAt };
+  identity.referenceArtifacts = [{ ...old, id: "current", uri: "data:image/png;base64,TkVX" }];
+  project.identityProfileId = identity.id; project.artifacts.push(old); project.referenceArtifactIds = [old.id];
+  const migrated = migrateProjectsAndIdentities([project], [identity]);
+  expect(migrated.identities[0].referenceArtifacts).toEqual(identity.referenceArtifacts);
+  expect(migrated.projects[0].referenceArtifactIds).toEqual(["current"]);
+  expect(migrated.projects[0].artifacts.find(artifact => artifact.id === "old")).toEqual(old);
+});
 
 describe("bundled Lottery pixel project migration", () => {
   it("removes the destructive 96-to-64 double downsampling preset", () => {
@@ -19,6 +32,26 @@ describe("bundled Lottery pixel project migration", () => {
       defaultPixelGridSize: 96,
       defaultDisplaySize: 384,
     });
+  });
+});
+
+describe("opening a project requested by the desktop", () => {
+  it("does not switch projects when the current draft cannot be saved", async () => {
+    let activated = false;
+    await expect(activateProjectAfterPersist("linked-project", {
+      async persist() { throw new Error("当前草稿保存失败"); },
+      activate() { activated = true; return true; },
+    })).rejects.toThrow("当前草稿保存失败");
+    expect(activated).toBe(false);
+  });
+
+  it("switches only after the current draft is durable", async () => {
+    const operations: string[] = [];
+    await activateProjectAfterPersist("linked-project", {
+      async persist() { operations.push("persist"); },
+      activate(projectId) { operations.push(`activate:${projectId}`); return true; },
+    });
+    expect(operations).toEqual(["persist", "activate:linked-project"]);
   });
 });
 
@@ -45,7 +78,7 @@ describe("bundled Lottery clear real project migration", () => {
     const sitBlink = stored.transitions.find((transition) => transition.id === "template-sit-blink")!;
     sitBlink.authorityBridge = { mode: "hard-cut", durationMs: 120 };
     sitRest.authorityBridge = { mode: "blur-dissolve", durationMs: 700 };
-    sitRest.triggers = sitRest.triggers.filter((trigger) => trigger.event !== "double-click");
+    sitRest.triggers = sitRest.triggers.filter((trigger) => trigger.event !== "left-click");
     sitBlink.triggers = [{
       id: "customer-sit-head-click",
       event: "left-click",
@@ -57,7 +90,7 @@ describe("bundled Lottery clear real project migration", () => {
     const migratedSitRest = migrated.transitions.find((transition) => transition.id === "template-sit-rest")!;
     const migratedSitBlink = migrated.transitions.find((transition) => transition.id === "template-sit-blink")!;
     expect(migratedSitRest.triggers.some((trigger) => trigger.event === "inactivity")).toBe(true);
-    expect(migratedSitRest.triggers.some((trigger) => trigger.event === "double-click")).toBe(true);
+    expect(migratedSitRest.triggers.some((trigger) => trigger.event === "left-click")).toBe(true);
     expect(migratedSitBlink.triggers.some((trigger) => trigger.id === "customer-sit-head-click")).toBe(true);
     expect(migratedSitBlink.triggers.some((trigger) => trigger.id === "template-trigger-sit-click")).toBe(true);
     expect(migratedSitBlink.entryBlendMs).toBe(320);

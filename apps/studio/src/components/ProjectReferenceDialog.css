@@ -1,0 +1,25 @@
+.project-reference-dialog { width:min(560px,calc(100vw - 40px)); max-height:calc(100dvh - 64px); overflow-y:auto; }
+.project-reference-current { margin-bottom:4px; }
+.project-reference-help,.project-reference-current p { margin:0; }
+.project-reference-images { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; max-height:180px; overflow:auto; }
+.project-reference-images img,.project-reference-state img { width:76px; object-fit:contain; }
+.project-reference-state { display:flex; align-items:center; gap:12px; }
+.project-reference-dialog input[type=file] { width:100%; }
+.project-reference-dialog input[type=file]::file-selector-button { margin-right:10px; cursor:pointer; }
+
+.project-reference-entry { display:flex; flex-direction:column; gap:10px; }
+.project-reference-entry > div { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+/* Application appearance is layered below the shared component library; unlayered rules above own layout. */
+@layer petlord-application {
+ .project-reference-current { padding-bottom:16px; border-bottom:1px solid var(--border); }
+ .project-reference-current strong { color:var(--text); font-size:var(--font-sm); line-height:var(--line-sm); }
+ .project-reference-help,
+.project-reference-current p { color:var(--text-soft); font-size:var(--font-xs); line-height:1.65; }
+ .project-reference-images img,
+.project-reference-state img { height:76px; border:1px solid var(--border); border-radius:var(--radius-control); background:var(--surface); }
+ .project-reference-state { color:var(--text); font-size:var(--font-sm); line-height:var(--line-sm); }
+ .project-reference-dialog input[type=file] { color:var(--text-soft); font-size:var(--font-sm); line-height:var(--line-sm); }
+ .project-reference-dialog input[type=file]::file-selector-button { padding:7px 12px; border:1px solid var(--border); border-radius:var(--radius-control); background:var(--surface); color:var(--text); }
+ .project-reference-entry { padding:16px; border-bottom:1px solid var(--border); }
+ .project-reference-entry strong { color:var(--text); font-size:var(--font-xs); line-height:var(--line-xs); }
+ .project-reference-entry small { color:var(--text-muted); font-size:var(--font-xs); line-height:var(--line-xs); } }

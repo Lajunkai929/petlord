@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createBlankIdentityProfile, createBlankProject } from "./projectTemplate";
-import { resolveProjectGenerationContext } from "./generationContext";
+import { createPortableProjectSource, resolveProjectGenerationContext } from "./generationContext";
 import type { StyleProfile } from "./styleLibrary";
 
 const input = {
@@ -47,5 +47,18 @@ describe("project generation context", () => {
     expect(context.identityPrompt).toBe("球球 的全局形象特征");
     expect(context.imageStylePrompt).toBe("球球 的图片风格");
     expect(context.videoStylePrompt).toBe("锁定 球球 的视频风格");
+    const reference = { id: "shared-photo", kind: "identity-reference" as const, uri: "data:image/png;base64,AAAA", mimeType: "image/png", createdAt: "2026-09-02T00:00:00.000Z" };
+    identity.referenceArtifacts = [reference];
+    project.artifacts.push({...reference,uri:"data:image/png;base64,BBBB"});
+    const effective = resolveProjectGenerationContext(project,[identity],[profile]);
+    const portable = createPortableProjectSource(project,effective);
+    expect(portable.identityProfileId).toBeUndefined();
+    expect(portable.styleProfileId).toBeUndefined();
+    const restored = resolveProjectGenerationContext(portable,[],[]);
+    expect(restored.identityPrompt).toBe(effective.identityPrompt);
+    expect(restored.imageStylePrompt).toBe(effective.imageStylePrompt);
+    expect(restored.videoStylePrompt).toBe(effective.videoStylePrompt);
+    expect(restored.identityReferences.map(a => a.uri)).toEqual([reference.uri]);
+    expect(new Set(portable.artifacts.map(a => a.id)).size).toBe(portable.artifacts.length);
   });
 });

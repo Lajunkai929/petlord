@@ -6,10 +6,12 @@ const pageByArea: Record<StudioArea, string> = {
   identity: "identities",
   style: "styles",
   graph: "edit",
+  drawing: "draw",
   preview: "preview",
   review: "review",
   plugins: "plugins",
   publish: "publish",
+  providers: "providers",
 };
 
 const areaByPage = new Map<string, StudioArea>([
@@ -20,7 +22,7 @@ const areaByPage = new Map<string, StudioArea>([
   ["graph", "graph"],
 ]);
 
-const selectionAwareAreas = new Set<StudioArea>(["graph", "preview", "publish"]);
+const selectionAwareAreas = new Set<StudioArea>(["graph", "drawing", "preview", "publish"]);
 
 export interface StudioRouteState {
   area: StudioArea;

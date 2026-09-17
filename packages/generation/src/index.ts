@@ -113,6 +113,7 @@ export type PersistentJobStatus = "queued" | "submitting" | "running" | "succeed
 
 export interface PersistentGenerationJob {
   id: string;
+  remoteTaskId?: string;
   kind: "state-image" | "transition-video";
   providerId?: string;
   provider?: string;
@@ -136,6 +137,7 @@ export interface PersistentGenerationJob {
 }
 
 export interface PersistentJobCost {
+  priorAttemptsReservedCny?: number;
   status: "estimated" | "settled";
   source: "estimate" | "provider-usage" | "unit-output" | "duration-reconciled";
   estimatedMinCny: number;
@@ -145,15 +147,25 @@ export interface PersistentJobCost {
 }
 
 export type GenerationProviderCapability = "image" | "video";
-export type GenerationProviderType = "volcengine-ark";
+export type GenerationProviderType = "volcengine-ark" | "openai-compatible" | "siliconflow";
+
+export interface GenerationProviderProtocol {
+  id: GenerationProviderType;
+  label: string;
+  description: string;
+  capabilities: GenerationProviderCapability[];
+}
 
 export interface GenerationProviderModel {
+  /** User-supplied budget estimate: CNY per image or per video second. */
+  estimatedUnitCostCny?: number;
   id: string;
   label: string;
   description: string;
 }
 
 export interface GenerationProviderCatalogEntry {
+  id?: string;
   type: GenerationProviderType;
   label: string;
   description: string;
@@ -163,6 +175,7 @@ export interface GenerationProviderCatalogEntry {
 }
 
 export interface GenerationProviderConfiguration {
+  presetId?: string;
   id: string;
   type: GenerationProviderType;
   capability: GenerationProviderCapability;
@@ -179,10 +192,13 @@ export interface GenerationProvidersSnapshot {
   serviceAvailable: true;
   providers: GenerationProviderConfiguration[];
   catalog: GenerationProviderCatalogEntry[];
+  protocols?: GenerationProviderProtocol[];
   defaults: Partial<Record<GenerationProviderCapability, string>>;
 }
 
 export interface SaveGenerationProviderInput {
+  presetId?: string;
+  models?: GenerationProviderModel[];
   type: GenerationProviderType;
   capability: GenerationProviderCapability;
   name: string;
@@ -202,6 +218,10 @@ const videoTokenPricePerMillionCny: Record<string, number> = {
   "doubao-seedance-2-0-fast-260128": 37,
   "doubao-seedance-2-0-260128": 46,
 };
+
+function knownModelPrice(prices: Record<string, number>, model: string) {
+  return Object.hasOwn(prices, model) ? prices[model] : undefined;
+}
 
 // Calibrated from Ark's returned usage for a 4 s, 480p, 1:1 Seedance 2.0 Mini task (38,800 tokens).
 // It is intentionally presented as an estimate; the provider's final usage remains authoritative.
@@ -224,25 +244,37 @@ export function toPersistentJobCost(estimate: CostEstimate | null): PersistentJo
   };
 }
 
-export function estimateImageGenerationCost(model: string, count: number): CostEstimate | null {
-  const unitPrice = imagePriceCny[model];
-  if (unitPrice === undefined) return null;
+export function estimateImageGenerationCost(model: string, count: number, models?: GenerationProviderModel[]): CostEstimate | null {
+  const configuredPrice = models?.find(candidate => candidate.id === model)?.estimatedUnitCostCny;
+  const unitPrice = configuredPrice ?? knownModelPrice(imagePriceCny, model);
+  if (unitPrice === undefined || !Number.isFinite(unitPrice) || unitPrice <= 0 || !Number.isFinite(count) || count < 0) return null;
   const amount = unitPrice * count;
-  return { minimumCny: amount, maximumCny: amount, basis: `按 ¥${unitPrice.toFixed(2)}/张 × ${count} 张估算` };
+  if (!Number.isFinite(amount)) return null;
+  return { minimumCny: amount, maximumCny: amount, basis: `${configuredPrice !== undefined ? "用户预估 · " : ""}按 ¥${unitPrice}/张 × ${count} 张估算` };
 }
 
 export function estimateVideoGenerationCost(input: {
   model: string;
+  models?: GenerationProviderModel[];
   resolution: "480p" | "720p" | "1080p";
   durationMode: "smart" | "fixed";
   durationSeconds?: number;
 }): CostEstimate | null {
-  const tokenPrice = videoTokenPricePerMillionCny[input.model];
+  const configuredPrice = input.models?.find(candidate => candidate.id === input.model)?.estimatedUnitCostCny;
+  if (configuredPrice !== undefined) {
+    if (!Number.isFinite(configuredPrice) || configuredPrice <= 0) return null;
+    const minimumSeconds = input.durationMode === "fixed" ? input.durationSeconds ?? 4 : 4;
+    const maximumSeconds = input.durationMode === "fixed" ? input.durationSeconds ?? 4 : 15;
+    if (!Number.isFinite(minimumSeconds) || minimumSeconds <= 0 || !Number.isFinite(configuredPrice * maximumSeconds)) return null;
+    return { minimumCny: configuredPrice * minimumSeconds, maximumCny: configuredPrice * maximumSeconds, basis: `用户预估 · ¥${configuredPrice}/秒 × ${minimumSeconds === maximumSeconds ? minimumSeconds : `${minimumSeconds}–${maximumSeconds}`} 秒` };
+  }
+  const tokenPrice = knownModelPrice(videoTokenPricePerMillionCny, input.model);
   if (tokenPrice === undefined) return null;
   const resolutionFactor = input.resolution === "480p" ? 1 : input.resolution === "720p" ? 2.25 : 5.0625;
   const pricePerSecond = seedance480SquareTokensPerSecond * resolutionFactor * tokenPrice / 1_000_000;
   const minimumSeconds = input.durationMode === "fixed" ? input.durationSeconds ?? 4 : 4;
   const maximumSeconds = input.durationMode === "fixed" ? input.durationSeconds ?? 4 : 15;
+  if (!Number.isFinite(minimumSeconds) || minimumSeconds <= 0 || !Number.isFinite(pricePerSecond * maximumSeconds)) return null;
   return {
     minimumCny: pricePerSecond * minimumSeconds,
     maximumCny: pricePerSecond * maximumSeconds,
@@ -253,9 +285,10 @@ export function estimateVideoGenerationCost(input: {
 }
 
 export function calculateVideoGenerationCostFromTokens(model: string, completionTokens: number) {
-  const tokenPrice = videoTokenPricePerMillionCny[model];
+  const tokenPrice = knownModelPrice(videoTokenPricePerMillionCny, model);
   if (tokenPrice === undefined || !Number.isFinite(completionTokens) || completionTokens < 0) return null;
-  return completionTokens * tokenPrice / 1_000_000;
+  const amount = completionTokens * tokenPrice / 1_000_000;
+  return Number.isFinite(amount) ? amount : null;
 }
 
 export type PersistentStateDraftRequest = StateDraftRequest & {
@@ -450,10 +483,10 @@ export function assembleStateDraftPrompt(request: StateDraftRequest) {
     .join("\n");
 }
 
-export async function submitStateDraftJob(request: PersistentStateDraftRequest) {
+export async function buildStateDraftJobSubmission(request: PersistentStateDraftRequest, resolveImage: (uri: string) => Promise<string> = toArkImageUri) {
   const prompt = assembleStateDraftPrompt(request);
-  const images = await Promise.all(request.identityReferenceUris.slice(0, 10).map(toArkImageUri));
-  return submitPersistentJob({
+  const images = await Promise.all(request.identityReferenceUris.slice(0, 10).map(resolveImage));
+  return {
     id: request.jobId,
     kind: "state-image",
     providerId: request.settings.imageProviderId,
@@ -469,25 +502,25 @@ export async function submitStateDraftJob(request: PersistentStateDraftRequest) 
       resolution: request.settings.imageResolution,
       candidateCount: request.settings.imageCandidateCount,
     },
-  });
+  };
 }
 
-export async function submitTransitionJob(request: PersistentTransitionRequest) {
+export async function buildTransitionJobSubmission(request: PersistentTransitionRequest, resolveImage: (uri: string) => Promise<string> = toArkImageUri) {
   const [firstFrame, lastFrame] = await Promise.all([
-    toArkImageUri(request.fromStateImageUri),
-    toArkImageUri(request.targetDraftImageUri),
+    resolveImage(request.fromStateImageUri),
+    resolveImage(request.targetDraftImageUri),
   ]);
   const providerRequest: Record<string, unknown> = {
     model: request.settings.videoModel,
     prompt: assembleTransitionPrompt(request),
     firstFrame,
     lastFrame,
-    identityReferences: await Promise.all(request.identityReferenceUris.slice(0, 7).map(toArkImageUri)),
+    identityReferences: await Promise.all(request.identityReferenceUris.slice(0, 7).map(resolveImage)),
     resolution: request.settings.videoResolution,
     ratio: request.settings.ratio,
   };
   if (request.durationMode === "fixed" && request.durationSeconds) providerRequest.durationSeconds = request.durationSeconds;
-  return submitPersistentJob({
+  return {
     id: request.jobId,
     kind: "transition-video",
     providerId: request.settings.videoProviderId,
@@ -509,7 +542,15 @@ export async function submitTransitionJob(request: PersistentTransitionRequest) 
       keyColor: request.transparencyKeyColor,
       similarity: request.transparencySimilarity,
     },
-  });
+  };
+}
+
+export async function submitStateDraftJob(request: PersistentStateDraftRequest) {
+  return submitPersistentJob(await buildStateDraftJobSubmission(request));
+}
+
+export async function submitTransitionJob(request: PersistentTransitionRequest) {
+  return submitPersistentJob(await buildTransitionJobSubmission(request));
 }
 
 export function createSandboxImageGenerationProvider(options: { stepDelayMs?: number } = {}): ImageGenerationProvider {

@@ -1,8 +1,9 @@
+import { SelectField, Segmented, Switch, Tooltip, Input, Button } from "@petlord/ui";
 import { Crosshair, Eye, Play, Smiley, SpinnerGap } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { defaultPointerGazeAnchor, defaultPointerGazeDirectionKeyframesMs, type Artifact, type PointerGaze } from "@petlord/schema";
 import type { CostEstimate, PersistentGenerationJob } from "@petlord/generation";
-import { Segmented, Switch, Tooltip } from "antd";
+
 
 export const defaultPointerGaze: PointerGaze = {
   enabled: false,
@@ -30,6 +31,7 @@ export function StatePointerGazeEditor({
   value,
   videos,
   sourceImage,
+  nativePixel,
   activeJob,
   estimate,
   busy,
@@ -40,6 +42,7 @@ export function StatePointerGazeEditor({
   value?: PointerGaze;
   videos: Artifact[];
   sourceImage?: string;
+  nativePixel?: Artifact["nativePixel"];
   activeJob?: PersistentGenerationJob;
   estimate: CostEstimate | null;
   busy: boolean;
@@ -130,26 +133,27 @@ export function StatePointerGazeEditor({
           <section className="pointer-gaze-editor__anchor-editor">
             <header>
               <span><strong>注视中心</strong><small>在权威图上点击头部中心</small></span>
-              <button type="button" onClick={() => onChange({ ...gaze, anchor: { ...defaultPointerGazeAnchor } })}>画布中心</button>
+              <Button type="default" htmlType="button" onClick={() => onChange({ ...gaze, anchor: { ...defaultPointerGazeAnchor } })}>画布中心</Button>
             </header>
             <button
               className="pointer-gaze-editor__anchor-canvas checkerboard"
+              style={nativePixel ? { aspectRatio: `${nativePixel.width} / ${nativePixel.height}` } : undefined}
               type="button"
               aria-label="在状态图上选择注视中心"
               title="点击角色头部中心；鼠标方向与响应距离都从这里计算"
               onPointerDown={selectGazeAnchor}
             >
-              {sourceImage ? <img src={sourceImage} alt="" draggable={false} /> : <small>先生成或选择状态权威图</small>}
+              {sourceImage ? <img style={{ minWidth: 0, minHeight: 0, imageRendering: nativePixel ? "pixelated" : "auto" }} src={sourceImage} alt="" draggable={false} /> : <small>先生成或选择状态权威图</small>}
               <span className="pointer-gaze-editor__anchor" style={{ left: `${gazeAnchor.x * 100}%`, top: `${gazeAnchor.y * 100}%` }}>
                 <Crosshair size={18} weight="bold" /><em>中心</em>
               </span>
             </button>
             <div className="pointer-gaze-editor__anchor-coordinates">
-              <label><span>水平 X</span><input aria-label="注视中心水平 X" type="number" min={0} max={100} step={0.5} value={(gazeAnchor.x * 100).toFixed(1)} onChange={(event) => updateGazeAnchor("x", Number(event.target.value))} /><em>%</em></label>
-              <label><span>垂直 Y</span><input aria-label="注视中心垂直 Y" type="number" min={0} max={100} step={0.5} value={(gazeAnchor.y * 100).toFixed(1)} onChange={(event) => updateGazeAnchor("y", Number(event.target.value))} /><em>%</em></label>
+              <label><span>水平 X</span><Input aria-label="注视中心水平 X" type="number" min={0} max={100} step={0.5} value={(gazeAnchor.x * 100).toFixed(1)} onChange={(event) => updateGazeAnchor("x", Number(event.target.value))} /><em>%</em></label>
+              <label><span>垂直 Y</span><Input aria-label="注视中心垂直 Y" type="number" min={0} max={100} step={0.5} value={(gazeAnchor.y * 100).toFixed(1)} onChange={(event) => updateGazeAnchor("y", Number(event.target.value))} /><em>%</em></label>
             </div>
           </section>
-          <label className="pointer-gaze-editor__range"><span>响应范围</span><select value={gaze.activationRadius} onChange={(event) => onChange({ ...gaze, activationRadius: Number(event.target.value) })}><option value={1}>贴近宠物</option><option value={1.4}>附近</option><option value={1.8}>较远</option><option value={2.4}>大范围</option></select></label>
+          <label className="pointer-gaze-editor__range"><span>响应范围</span><SelectField value={gaze.activationRadius} onChange={(event) => onChange({ ...gaze, activationRadius: Number(event.target.value) })}><option value={1}>贴近宠物</option><option value={1.4}>附近</option><option value={1.8}>较远</option><option value={2.4}>大范围</option></SelectField></label>
           {activeVideo && <video
             ref={videoRef}
             className="pointer-gaze-editor__video checkerboard"
@@ -159,9 +163,9 @@ export function StatePointerGazeEditor({
             playsInline
             onTimeUpdate={(event) => setPreviewTimeMs(Math.round(event.currentTarget.currentTime * 1000))}
           />}
-          {videos.length > 0 && <label className="pointer-gaze-editor__version"><span>注视素材</span><select value={gaze.videoArtifactId ?? ""} onChange={(event) => onActivateVideo(event.target.value)}>{videos.map((video, index) => <option value={video.id} key={video.id}>版本 {index + 1} · {new Date(video.createdAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</option>)}</select></label>}
+          {videos.length > 0 && <label className="pointer-gaze-editor__version"><span>注视素材</span><SelectField value={gaze.videoArtifactId ?? ""} onChange={(event) => onActivateVideo(event.target.value)}>{videos.map((video, index) => <option value={video.id} key={video.id}>版本 {index + 1} · {new Date(video.createdAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</option>)}</SelectField></label>}
           {activeVideo && <section className="pointer-gaze-editor__calibration">
-            <header><span><strong>八方向校准</strong><small>点方向预览；拖动视频后记录当前画面</small></span><button type="button" onClick={resetDirectionCalibration}>恢复均匀</button></header>
+            <header><span><strong>八方向校准</strong><small>点方向预览；拖动视频后记录当前画面</small></span><Button type="default" htmlType="button" onClick={resetDirectionCalibration}>恢复均匀</Button></header>
             <div className="pointer-gaze-editor__direction-pad" role="group" aria-label="注视方向校准">
               {gazeDirections.map((direction) => <button
                 type="button"
@@ -175,14 +179,14 @@ export function StatePointerGazeEditor({
               ><b>{direction.short}</b><small>{(directionKeyframesMs[direction.index] / 1000).toFixed(1)}s</small></button>)}
               <div className="pointer-gaze-editor__direction-center"><Eye size={16} /><small>鼠标</small></div>
             </div>
-            <div className="pointer-gaze-editor__calibration-action"><span>当前 {previewTimeMs / 1000}s · 校准“{selectedDirectionLabel}”</span><button type="button" onClick={calibrateSelectedDirection}>使用当前画面</button></div>
+            <div className="pointer-gaze-editor__calibration-action"><span>当前 {previewTimeMs / 1000}s · 校准“{selectedDirectionLabel}”</span><Button type="default" htmlType="button" onClick={calibrateSelectedDirection}>使用当前画面</Button></div>
           </section>}
-          <label className="pointer-gaze-editor__range"><span>切入 / 退出融合</span><select value={gaze.blendDurationMs ?? 240} onChange={(event) => onChange({ ...gaze, blendDurationMs: Number(event.target.value) })}><option value={0}>关闭</option><option value={120}>快速 · 0.12 秒</option><option value={240}>自然 · 0.24 秒</option><option value={360}>柔和 · 0.36 秒</option><option value={500}>最柔和 · 0.50 秒</option></select></label>
+          <label className="pointer-gaze-editor__range"><span>切入 / 退出融合</span><SelectField value={gaze.blendDurationMs ?? 240} onChange={(event) => onChange({ ...gaze, blendDurationMs: Number(event.target.value) })}><option value={0}>关闭</option><option value={120}>快速 · 0.12 秒</option><option value={240}>自然 · 0.24 秒</option><option value={360}>柔和 · 0.36 秒</option><option value={500}>最柔和 · 0.50 秒</option></SelectField></label>
           <div className="pointer-gaze-editor__submit">
             <Tooltip title="鼠标停住后保持当前视频帧；移动方向决定正向或反向取帧。点击和其他状态事件会打断注视。">
               <span className="pointer-gaze-editor__status">{activeVideo ? "已绑定可交互素材" : "素材待制作"}</span>
             </Tooltip>
-            <span><small>预计 ¥{estimate?.maximumCny.toFixed(2) ?? "--"}</small><button className="secondary-button" type="button" disabled={busy || Boolean(activeJob)} onClick={onGenerate}>{activeJob ? <SpinnerGap className="spin" size={14} /> : <Play size={14} weight="fill" />}{activeJob ? `${activeJob.progress}%` : activeVideo ? "重新生成" : "生成注视视频"}</button></span>
+            <span><small>预计 ¥{estimate?.maximumCny.toFixed(2) ?? "--"}</small><Button type="default" className="secondary-button" htmlType="button" disabled={busy || Boolean(activeJob)} onClick={onGenerate}>{activeJob ? <SpinnerGap className="spin" size={14} /> : <Play size={14} weight="fill" />}{activeJob ? `${activeJob.progress}%` : activeVideo ? "重新生成" : "生成注视视频"}</Button></span>
           </div>
         </div>
       )}

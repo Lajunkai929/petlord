@@ -125,7 +125,7 @@ export const seedProject: CharacterProject = {
     transparencyProcessing: { keyColor: "#00FF00", similarity: 0.34 },
     authorityBridge: { mode: "crossfade" as const, durationMs: 700 },
     triggers: [state.image === "lying"
-      ? { id: `trigger-${state.image}`, event: "double-click" as const, enabled: true, region: { shape: "ellipse" as const, x: 0.16, y: 0.18, width: 0.68, height: 0.68 } }
+      ? { id: `trigger-${state.image}`, event: "left-click" as const, enabled: true, region: { shape: "ellipse" as const, x: 0.16, y: 0.18, width: 0.68, height: 0.68 } }
       : state.image === "sleeping"
         ? { id: `trigger-${state.image}`, event: "inactivity" as const, enabled: true, timerDurationMs: 60_000 }
         : state.image === "eating"

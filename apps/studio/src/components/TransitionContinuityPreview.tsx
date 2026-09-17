@@ -1,3 +1,4 @@
+import { Button } from "@petlord/ui";
 import { ArrowClockwise, Check, FilmStrip, ImageSquare, SpeakerSlash, X } from "@phosphor-icons/react";
 import { RuntimeMediaCanvas, runtimeResolutionOptions, type RuntimeRenderResolution } from "@petlord/runtime-react";
 import {
@@ -27,7 +28,7 @@ export function TransitionContinuityPreview({ data, onClose }: { data: Transitio
             <em>{data.pixelSize ? `${data.pixelSize} × ${data.pixelSize}` : "1:1"}</em>
             {data.transparentVideo && <em>Alpha 视频</em>}
           </div>
-          <button type="button" onClick={onClose} aria-label="关闭过渡预览"><X size={17} /></button>
+          <Button type="default" htmlType="button" onClick={onClose} aria-label="关闭过渡预览"><X size={17} /></Button>
         </header>
 
         <div
@@ -36,6 +37,7 @@ export function TransitionContinuityPreview({ data, onClose }: { data: Transitio
         >
           <RuntimeMediaCanvas
             currentState={player.currentState}
+            targetState={player.targetState}
             activeTransition={player.activeTransition}
             phase={player.runtimePhase}
             bridgeProgress={player.bridgeProgress}
@@ -64,7 +66,7 @@ export function TransitionContinuityPreview({ data, onClose }: { data: Transitio
         </div>
 
         <footer>
-          <button className="secondary-button" type="button" onClick={player.replay}><ArrowClockwise size={15} />重新播放</button>
+          <Button type="default" className="secondary-button" htmlType="button" onClick={player.replay}><ArrowClockwise size={15} />重新播放</Button>
         </footer>
         {player.playbackError && <p className="transition-preview-error">{player.playbackError}</p>}
       </section>

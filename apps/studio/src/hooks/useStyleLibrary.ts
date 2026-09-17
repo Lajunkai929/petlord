@@ -4,6 +4,7 @@ import { materializePromptVariables, templateCharacterNamePrompt } from "@petlor
 import { defaultStyleProfiles, mergeStyleProfiles, normalizeStyleProfile, type StyleProfile, type StylePromptRevision } from "../styleLibrary";
 import type { ProjectSummary } from "./useProjectWorkspace";
 import { listWorkspaceEntities, saveWorkspaceEntity } from "../workspaceApi";
+import { useSyncedLibrary } from "./useSyncedLibrary";
 
 const styleLibraryKey = "petlord.v3.styles.v2";
 const projectStyleBindingsKey = "petlord.v3.project-style-bindings.v2";
@@ -87,10 +88,7 @@ export function useStyleLibrary(
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => {
-    if (!profilesHydrated) return;
-    void Promise.all(profiles.map((profile) => saveWorkspaceEntity("style", profile.id, profile)));
-  }, [profiles, profilesHydrated]);
+  useSyncedLibrary("style", profiles, setProfiles, profilesHydrated, inform);
 
   useEffect(() => {
     const boundProfile = profiles.find((profile) => profile.id === (project.styleProfileId ?? bindings[project.id] ?? activeProfileId));

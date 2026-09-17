@@ -1,3 +1,4 @@
+import { Button } from "@petlord/ui";
 import { Check, ImagesSquare } from "@phosphor-icons/react";
 import type { Artifact } from "@petlord/schema";
 import { PreviewableImage, PreviewableImageGroup } from "./PreviewableImage";
@@ -16,8 +17,8 @@ export function StateCandidatePicker({ candidates, activeArtifactId, onSelect }:
       <PreviewableImageGroup><div className="candidate-list">
         {candidates.map((candidate, index) => (
           <article className={candidate.id === activeArtifactId ? "is-selected" : ""} key={candidate.id}>
-            <div className="candidate-image checkerboard"><PreviewableImage src={candidate.uri} alt={`${candidate.label ?? `候选 ${index + 1}`}预览`} />{candidate.id === activeArtifactId && <i><Check size={14} weight="bold" />已采用</i>}</div>
-            <footer><span>候选 {index + 1}</span><button type="button" onClick={() => onSelect(candidate.id)}>{candidate.id === activeArtifactId ? "当前权威图" : "采用这张"}</button></footer>
+            <div className="candidate-image checkerboard"><PreviewableImage nativePixel={candidate.nativePixel} src={candidate.uri} alt={`${candidate.label ?? `候选 ${index + 1}`}预览`} />{candidate.id === activeArtifactId && <i><Check size={14} weight="bold" />已采用</i>}</div>
+            <footer><span>候选 {index + 1}</span><Button type="default" htmlType="button" onClick={() => onSelect(candidate.id)}>{candidate.id === activeArtifactId ? "当前权威图" : "采用这张"}</Button></footer>
           </article>
         ))}
       </div></PreviewableImageGroup>

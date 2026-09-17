@@ -1,16 +1,24 @@
-const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, Tray } = require("electron");
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, session, shell, Tray } = require("electron");
 const path = require("node:path");
-const { mkdir, readFile, readdir, unlink, writeFile, chmod, copyFile, rename } = require("node:fs/promises");
+const { pathToFileURL } = require("node:url");
+const { mkdir, readFile, unlink, writeFile, chmod, copyFile, rename } = require("node:fs/promises");
 const { createHash, randomBytes } = require("node:crypto");
-const { gunzipSync } = require("node:zlib");
 const { createServer } = require("node:http");
 const { DatabaseSync } = require("node:sqlite");
 const { spawn } = require("node:child_process");
 const { homedir } = require("node:os");
 const { preparePetLordDataDirectory, resolvePetLordDataDirectory } = require("./storage-paths.cjs");
+const { installApplicationMenu } = require("./application-menu.cjs");
+const { createDesktopPackageStore } = require("./package-store.cjs");
+const { createCodexDesignIntegration } = require("./codex-design-integration.cjs");
+const { createManagedWindowController, createStudioHost, provisionDefaultPackage } = require("./studio-host.cjs");
+
+const { normalizeCodexEvent, createCodexNotificationIntegration } = require("./codex-notifications.cjs");
+const { createDesktopCompanionController, createDesktopWasteAdapter } = require("./desktop-companion.cjs");
 
 const defaultSettings = {
   settingsVersion: 2,
+  theme: "light",
   launchAtLogin: false,
   alwaysOnTop: false,
   clickThrough: false,
@@ -23,6 +31,7 @@ const defaultSettings = {
   gazeTrackingArea: "wide",
   muted: true,
   todoEnabled: true,
+  desktopWasteEnabled: false,
   pluginGrants: {},
   pluginEnabled: {},
 };
@@ -37,6 +46,14 @@ let agentDatabase;
 let agentSocketServer;
 let agentSocketPath;
 let agentSocketToken;
+let studioHost;
+let shutdownStarted = false;
+let codexNotifications;
+let desktopCompanion;
+let desktopWaste;
+let companionTimer;
+let petDragging = false;
+let companionFacing = "left";
 
 const legacyUserDataDirectory = app.getPath("userData");
 const petLordDataDirectory = resolvePetLordDataDirectory();
@@ -51,16 +68,15 @@ function userDataPath(filename) {
   return path.join(petLordDataDirectory, filename);
 }
 
-function packageDirectory() {
-  return userDataPath("packages");
+function applicationResourcePath(...segments) {
+  return path.join(__dirname, "..", ...segments);
 }
 
-function activePackageKeyPath() {
-  return userDataPath("active-package.txt");
-}
-
-function legacyPackagePath() {
-  return userDataPath("active-desktop-pet.petlord");
+function nativeHelperPath(name) {
+  const filename = process.platform === "win32" && name === "ffmpeg" ? "ffmpeg.exe" : name;
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "native", filename)
+    : applicationResourcePath("native", process.arch, filename);
 }
 
 function settingsPath() {
@@ -123,34 +139,7 @@ function basename(value) {
 
 function normalizeAgentEvent(source, payload, receivedAt = new Date().toISOString()) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("Agent event payload must be an object.");
-  if (source === "codex") {
-    const sessionId = text(payload["thread-id"], 240) ?? text(payload.thread_id, 240) ?? text(payload.session_id, 240);
-    if (!sessionId) throw new Error("Codex notify payload is missing thread-id.");
-    const turnId = text(payload["turn-id"], 240) ?? text(payload.turn_id, 240) ?? "turn";
-    const cwd = text(payload.cwd, 4096);
-    const inputMessages = Array.isArray(payload["input-messages"])
-      ? payload["input-messages"].map((item) => text(item, 400)).filter(Boolean)
-      : [];
-    const kind = text(payload.type, 120) ?? "agent-turn-complete";
-    const type = kind === "agent-turn-failed" ? "failed" : kind === "agent-needs-attention" ? "needs-attention" : "turn-completed";
-    const severity = type === "failed" ? "error" : type === "needs-attention" ? "warning" : "success";
-    const dedupeKey = `codex:${sessionId}:${turnId}:${kind}`;
-    return {
-      schemaVersion: 1,
-      id: `codex-${stableHash(dedupeKey)}`,
-      source: "codex",
-      type,
-      severity,
-      sessionId,
-      occurredAt: receivedAt,
-      receivedAt,
-      dedupeKey,
-      title: inputMessages.at(-1) ?? basename(cwd) ?? "Codex 任务",
-      summary: text(payload["last-assistant-message"], 4000) ?? text(payload.last_assistant_message, 4000),
-      cwd,
-      metadata: { turnId, client: text(payload.client, 120) ?? null },
-    };
-  }
+  if (source === "codex") return normalizeCodexEvent(payload, receivedAt);
   if (source !== "claude") throw new Error("Unsupported agent source.");
   const sessionId = text(payload.session_id, 240);
   if (!sessionId) throw new Error("Claude Hook payload is missing session_id.");
@@ -246,6 +235,7 @@ function pluginStorageRemove(pluginId, key) {
 }
 
 function storeAgentEvent(event, broadcast = true) {
+  if (event.source === "codex") void codexNotifications?.observe(event);
   const existing = agentDatabase.prepare("SELECT data_json FROM external_event_inbox WHERE dedupe_key = ?").get(event.dedupeKey);
   if (existing) return JSON.parse(existing.data_json);
   agentDatabase.prepare(`
@@ -265,8 +255,11 @@ function listAgentEvents(input = {}) {
   const parameters = [];
   if (source) { conditions.push("source = ?"); parameters.push(source); }
   if (input.unreadOnly) conditions.push("acknowledged_at IS NULL");
+  if (input.notificationsOnly === true) conditions.push("event_type IN ('needs-attention', 'turn-completed', 'task-completed', 'failed')");
+  if(input.latestPerSession === true)conditions.push("session_rank = 1");
+  const sourceTable=input.latestPerSession === true ? "(SELECT *, ROW_NUMBER() OVER (PARTITION BY source, session_id ORDER BY received_at DESC, rowid DESC) AS session_rank FROM external_event_inbox)" : "external_event_inbox";
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-  return agentDatabase.prepare(`SELECT data_json FROM external_event_inbox ${where} ORDER BY received_at DESC LIMIT ?`)
+  return agentDatabase.prepare(`SELECT data_json FROM ${sourceTable} ${where} ORDER BY received_at DESC LIMIT ?`)
     .all(...parameters, limit)
     .map((row) => JSON.parse(row.data_json));
 }
@@ -453,60 +446,6 @@ async function installAgentIntegration(source) {
   throw new Error("Unsupported agent integration.");
 }
 
-function safePackageKey(key) {
-  if (!key || path.basename(key) !== key || !key.endsWith(".petlord")) throw new Error("Invalid package key.");
-  return key;
-}
-
-function packageBuffer(contents) {
-  if (Buffer.isBuffer(contents)) return contents;
-  if (typeof contents === "string") return Buffer.from(contents, "utf8");
-  if (contents instanceof Uint8Array) return Buffer.from(contents);
-  if (contents?.type === "Buffer" && Array.isArray(contents.data)) return Buffer.from(contents.data);
-  throw new Error("不支持的宠物包数据类型。");
-}
-
-function decodePackageJson(contents) {
-  const input = packageBuffer(contents);
-  const decoded = input[0] === 0x1f && input[1] === 0x8b ? gunzipSync(input) : input;
-  return { input, bundle: JSON.parse(decoded.toString("utf8")) };
-}
-
-function sha256(contents) {
-  return createHash("sha256").update(contents).digest("hex");
-}
-
-function verifyBundleIntegrity(bundle) {
-  if (bundle.bundleVersion !== 2) return;
-  if (bundle.integrity?.algorithm !== "SHA-256") throw new Error("V2 宠物包缺少 SHA-256 完整性信息。");
-  if (sha256(JSON.stringify(bundle.manifest)) !== bundle.integrity.manifestSha256) throw new Error("宠物包 manifest 校验失败，文件可能已损坏或被修改。");
-  for (const [key, expected] of Object.entries(bundle.integrity.assets ?? {})) {
-    const dataUrl = bundle.assets?.[key];
-    const match = /^data:[^;,]+;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl ?? "");
-    if (!match || sha256(Buffer.from(match[1], "base64")) !== expected) throw new Error(`宠物包资产 ${key} 校验失败。`);
-  }
-}
-
-function parsePackageSummary(contents, key, activeKey) {
-  const { bundle } = decodePackageJson(contents);
-  if (bundle?.format !== "petlord-package" || bundle?.bundleVersion !== 1 || typeof bundle?.createdAt !== "string" || !bundle?.manifest?.id) {
-    if (bundle?.format !== "petlord-package" || bundle?.bundleVersion !== 2 || typeof bundle?.createdAt !== "string" || !bundle?.manifest?.id) {
-      throw new Error("宠物包格式无效或版本不受支持。");
-    }
-  }
-  verifyBundleIntegrity(bundle);
-  return {
-    key,
-    active: key === activeKey,
-    createdAt: bundle.createdAt,
-    id: bundle.manifest.id,
-    name: bundle.manifest.name,
-    characterName: bundle.manifest.characterName,
-    stateCount: bundle.manifest.states?.length ?? 0,
-    transitionCount: bundle.manifest.transitions?.length ?? 0,
-  };
-}
-
 function normalizeSettings(candidate) {
   const validPermissions = new Set([
     "pet:read",
@@ -528,6 +467,7 @@ function normalizeSettings(candidate) {
     .filter(([id, enabled]) => id.length <= 120 && typeof enabled === "boolean"));
   return {
     settingsVersion: 2,
+    theme: candidate?.theme === "dark" ? "dark" : "light",
     launchAtLogin: Boolean(candidate?.launchAtLogin),
     alwaysOnTop: Boolean(candidate?.alwaysOnTop),
     clickThrough: Boolean(candidate?.clickThrough),
@@ -542,34 +482,10 @@ function normalizeSettings(candidate) {
     gazeTrackingArea: ["near", "wide", "screen"].includes(candidate?.gazeTrackingArea) ? candidate.gazeTrackingArea : "wide",
     muted: candidate?.muted !== false,
     todoEnabled: candidate?.todoEnabled !== false,
+    desktopWasteEnabled: candidate?.desktopWasteEnabled === true,
     pluginGrants,
     pluginEnabled,
   };
-}
-
-async function readActivePackageKey() {
-  try {
-    return (await readFile(activePackageKeyPath(), "utf8")).trim();
-  } catch (error) {
-    if (error?.code === "ENOENT") return "";
-    throw error;
-  }
-}
-
-async function listPackages() {
-  await mkdir(packageDirectory(), { recursive: true });
-  const activeKey = await readActivePackageKey();
-  const entries = await readdir(packageDirectory(), { withFileTypes: true });
-  const summaries = await Promise.all(entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".petlord"))
-    .map(async (entry) => {
-      try {
-        return parsePackageSummary(await readFile(path.join(packageDirectory(), entry.name)), entry.name, activeKey);
-      } catch {
-        return null;
-      }
-    }));
-  return summaries.filter(Boolean).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
 function broadcast(channel, ...args) {
@@ -579,63 +495,45 @@ function broadcast(channel, ...args) {
 }
 
 async function notifyPackageChanged(contents) {
+  desktopCompanion?.interrupt("package-changed");
   broadcast("runtime:package-changed", contents ?? null);
   if (contents && mainWindow && !mainWindow.isDestroyed()) mainWindow.showInactive();
   updateTrayMenu();
 }
 
-async function savePackageContents(contents, options = {}) {
-  const parsed = parsePackageSummary(contents, "pending.petlord", "");
-  const encoded = packageBuffer(contents);
-  await mkdir(packageDirectory(), { recursive: true });
-  const packages = await listPackages();
-  const explicitTarget = options.targetKey ? packages.find((candidate) => candidate.key === safePackageKey(String(options.targetKey))) : undefined;
-  const sameNameTarget = options.mode === "new" ? undefined : packages.find((candidate) => candidate.name.trim().toLocaleLowerCase() === parsed.name.trim().toLocaleLowerCase());
-  const timestamp = parsed.createdAt.replaceAll(/[^0-9]/g, "").slice(0, 14) || Date.now().toString();
-  const id = String(parsed.id).replaceAll(/[^A-Za-z0-9_-]/g, "-").slice(0, 52);
-  const key = explicitTarget?.key ?? sameNameTarget?.key ?? safePackageKey(`${timestamp}-${id}.petlord`);
-  await writeFile(path.join(packageDirectory(), key), encoded);
-  await writeFile(activePackageKeyPath(), key, "utf8");
-  const updatedPackages = await listPackages();
-  for (const old of updatedPackages.slice(30)) {
-    if (!old.active) await unlink(path.join(packageDirectory(), old.key)).catch(() => undefined);
-  }
-  await notifyPackageChanged(encoded);
-  return (await listPackages()).find((candidate) => candidate.key === key);
+let desktopPackageStore;
+
+function packageStore() {
+  if (!desktopPackageStore) desktopPackageStore = createDesktopPackageStore({
+    dataDirectory: petLordDataDirectory,
+    onPackageChanged: notifyPackageChanged,
+    onPackagesChanged: updateTrayMenu,
+  });
+  return desktopPackageStore;
 }
 
-async function migrateLegacyPackage() {
-  if ((await listPackages()).length > 0) return;
-  try {
-    await savePackageContents(await readFile(legacyPackagePath()));
-  } catch (error) {
-    if (error?.code !== "ENOENT") throw error;
-  }
+async function listPackages() {
+  return packageStore().listPackages();
+}
+
+async function savePackageContents(contents, options = {}) {
+  const { skipStudioSync = false, ...installOptions } = options;
+  const installed = await packageStore().installPackage(contents, installOptions);
+  // Installing remains successful even if a malformed legacy source cannot be reconstructed.
+  if (!skipStudioSync) void studioHost?.syncInstalledPackages().catch(error => console.warn("Unable to sync installed pet to Studio", error));
+  return installed;
 }
 
 async function loadActivePackage() {
-  await migrateLegacyPackage();
-  const key = await readActivePackageKey();
-  if (!key) return null;
-  return readFile(path.join(packageDirectory(), safePackageKey(key)));
+  return packageStore().loadActivePackage();
 }
 
 async function activatePackage(key) {
-  const safeKey = safePackageKey(key);
-  const contents = await readFile(path.join(packageDirectory(), safeKey));
-  parsePackageSummary(contents, safeKey, safeKey);
-  await writeFile(activePackageKeyPath(), safeKey, "utf8");
-  await notifyPackageChanged(contents);
-  return contents;
+  return packageStore().activatePackage(key);
 }
 
 async function removePackage(key) {
-  const safeKey = safePackageKey(key);
-  const activeKey = await readActivePackageKey();
-  if (safeKey === activeKey) throw new Error("当前正在使用的宠物包不能删除，请先切换到其他版本。");
-  await unlink(path.join(packageDirectory(), safeKey));
-  updateTrayMenu();
-  return listPackages();
+  return packageStore().removePackage(key);
 }
 
 function subscriptionServerUrl(value) {
@@ -679,7 +577,7 @@ async function downloadSubscriptionPackage(serverUrl, publicationId) {
   if (Number.isFinite(declaredLength) && declaredLength > 224 * 1024 * 1024) throw new Error("订阅包超过 224 MB 安全限制。");
   const contents = Buffer.from(await response.arrayBuffer());
   if (contents.byteLength === 0 || contents.byteLength > 224 * 1024 * 1024) throw new Error("订阅包大小无效。");
-  parsePackageSummary(contents, "subscription.petlord", "");
+  packageStore().parsePackageSummary(contents, "subscription.petlord", "");
   return contents;
 }
 
@@ -706,6 +604,8 @@ async function saveSettings(patch) {
   await writeFile(settingsPath(), JSON.stringify(runtimeSettings, null, 2), "utf8");
   applySettings();
   broadcast("runtime:settings-changed", runtimeSettings);
+  studioHost?.notifyTheme(runtimeSettings.theme);
+  settingsWindow?.setBackgroundColor(runtimeSettings.theme === "dark" ? "#201c19" : "#faf8f4");
   updateTrayMenu();
   return runtimeSettings;
 }
@@ -728,6 +628,7 @@ function dockWindow() {
 }
 
 function movePetWindow(input) {
+  desktopCompanion?.interrupt("manual-drag");
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const requestedX = Number(input?.x);
   const requestedY = Number(input?.y);
@@ -846,7 +747,7 @@ function createSettingsWindow(showInitially) {
     height: 650,
     minWidth: 720,
     minHeight: 560,
-    backgroundColor: "#f3f5ef",
+    backgroundColor: runtimeSettings.theme === "dark" ? "#201c19" : "#faf8f4",
     title: "PetLord 设置",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: { x: 18, y: 18 },
@@ -866,17 +767,25 @@ function createSettingsWindow(showInitially) {
   });
   settingsWindow.on("closed", () => { settingsWindow = undefined; });
   loadSurface(settingsWindow, "settings");
+  return settingsWindow;
 }
 
+const settingsWindows = createManagedWindowController(createSettingsWindow);
+
 function showSettings(openImport = false) {
-  if (!settingsWindow || settingsWindow.isDestroyed()) createSettingsWindow(true);
-  else {
-    settingsWindow.show();
-    settingsWindow.focus();
-  }
+  settingsWindow = settingsWindows.show();
   if (openImport) {
     if (settingsWindow.webContents.isLoadingMainFrame()) settingsWindow.webContents.once("did-finish-load", () => settingsWindow?.webContents.send("runtime:open-package-import"));
     else settingsWindow.webContents.send("runtime:open-package-import");
+  }
+}
+
+async function showStudio() {
+  try {
+    await studioHost?.showStudio();
+  } catch (error) {
+    console.error("Unable to open PetLord Studio", error);
+    dialog.showErrorBox("PetLord Studio 无法打开", error instanceof Error ? error.message : "本地创作服务启动失败。");
   }
 }
 
@@ -892,6 +801,7 @@ function updateTrayMenu() {
         }))
       : [{ label: "还没有宠物配置", enabled: false }];
     tray.setContextMenu(Menu.buildFromTemplate([
+      { label: "打开 Studio", click: () => { void showStudio(); } },
       { label: "打开设置", click: () => showSettings() },
       { label: "显示宠物", click: () => mainWindow?.showInactive() },
       { label: "导入配置", click: () => showSettings(true) },
@@ -965,9 +875,35 @@ app.whenReady().then(async () => {
   } catch (error) {
     console.warn(`Unable to migrate legacy PetLord data to ${petLordDataDirectory}`, error);
   }
+  await provisionDefaultPackage({
+    dataDirectory: petLordDataDirectory,
+    defaultPackagePath: applicationResourcePath("resources", "default.petlord"),
+  });
   await loadSettings();
   initializeAgentDatabase();
   await startAgentSocket();
+  desktopWaste = createDesktopWasteAdapter({desktopPath: process.env.PETLORD_DESKTOP_DIR || app.getPath("desktop"), stateDirectory: petLordDataDirectory, trashItem: value => shell.trashItem(value), iconHelperPath: nativeHelperPath("desktop-waste-icon"), allowSwiftFallback: !app.isPackaged});
+  desktopCompanion = createDesktopCompanionController({
+    getBounds: () => mainWindow.getBounds(), getWorkArea: bounds => screen.getDisplayMatching(bounds).workArea,
+    setBounds: bounds => { if(mainWindow && !mainWindow.isDestroyed()) mainWindow.setBounds(bounds, false); },
+    isDragging: () => petDragging || !mainWindow || mainWindow.isDestroyed(), isWasteEnabled: () => runtimeSettings.desktopWasteEnabled === true,
+    wasteAdapter: desktopWaste,
+    getWastePosition: bounds => { const size=runtimeSettings.displaySize; return {x:bounds.x+(bounds.width-size)/2+size*.8,y:bounds.y+bounds.height-size+size*.87}; },
+    onResult: result => broadcast("runtime:desktop-waste", result),
+    onMovement: movement => { if(companionFacing!==movement.facing){companionFacing=movement.facing; mainWindow?.webContents.send("runtime:companion-facing",companionFacing);} },
+  });
+  let lastCompanionTick=Date.now();
+  companionTimer=setInterval(()=>{const now=Date.now();desktopCompanion?.tick(now-lastCompanionTick);lastCompanionTick=now;},32);
+  companionTimer.unref();
+  const petSender = event => {
+    if(!mainWindow || mainWindow.isDestroyed() || event.sender!==mainWindow.webContents || event.senderFrame!==mainWindow.webContents.mainFrame)return false;
+    try{const target=surfaceUrl("pet"),expected=target.type==="url"?new URL(target.value):pathToFileURL(target.value);expected.searchParams.set("surface","pet");const actual=new URL(event.senderFrame.url);actual.hash="";return actual.href===expected.href;}catch{return false;}
+  };
+  ipcMain.on("runtime:companion-playback",(event,input)=>{if(!petSender(event))return;void desktopCompanion.handleAction(input);});
+  ipcMain.on("runtime:pet-dragging",(event,value)=>{if(!petSender(event))return;petDragging=value===true;if(petDragging)desktopCompanion.interrupt("drag");});
+  ipcMain.handle("runtime:perform-companion-action",(event,action)=>{assertSettingsSender(event);if(typeof action!=="string"||action.length>64)throw Error("Invalid companion action");desktopCompanion.interrupt("manual-action");mainWindow?.showInactive();mainWindow?.webContents.send("runtime:companion-action",action);});
+  ipcMain.handle("runtime:list-desktop-waste",event=>{assertSettingsSender(event);return desktopWaste.list();});
+  ipcMain.handle("runtime:trash-desktop-waste",(event,id)=>{assertSettingsSender(event);return desktopWaste.trashOwned(id);});
   const hasPackage = Boolean(await loadActivePackage().catch(() => null));
   ipcMain.handle("runtime:close", () => { settingsWindow?.hide(); });
   ipcMain.handle("runtime:set-ignore-mouse", (_event, ignore) => setPetWindowIgnoreMouse(ignore));
@@ -975,6 +911,7 @@ app.whenReady().then(async () => {
     if (event.sender === mainWindow?.webContents) movePetWindow(input);
   });
   ipcMain.handle("runtime:show-settings", () => showSettings());
+  ipcMain.handle("runtime:show-studio", () => showStudio());
   ipcMain.handle("runtime:hide-settings", () => settingsWindow?.hide());
   ipcMain.handle("runtime:show-pet", () => mainWindow?.showInactive());
   ipcMain.handle("runtime:get-settings", () => runtimeSettings);
@@ -992,6 +929,11 @@ app.whenReady().then(async () => {
   ipcMain.handle("runtime:load-package", () => loadActivePackage());
   ipcMain.handle("runtime:list-packages", () => listPackages());
   ipcMain.handle("runtime:activate-package", (_event, key) => activatePackage(String(key)));
+  ipcMain.handle("runtime:edit-package", async (_event, key) => {
+    const window = await studioHost.openInstalledPackage(String(key));
+    settingsWindow?.hide();
+    return Boolean(window);
+  });
   ipcMain.handle("runtime:remove-package", (_event, key) => removePackage(String(key)));
   ipcMain.handle("runtime:list-subscription-packages", (_event, serverUrl) => listSubscriptionPackages(serverUrl));
   ipcMain.handle("runtime:download-subscription-package", (_event, serverUrl, publicationId) => downloadSubscriptionPackage(serverUrl, publicationId));
@@ -1003,23 +945,104 @@ app.whenReady().then(async () => {
   ipcMain.handle("runtime:open-agent-session", (_event, input) => openAgentSession(input));
   ipcMain.handle("runtime:agent-integration-status", () => agentIntegrationStatus());
   ipcMain.handle("runtime:install-agent-integration", (_event, source) => installAgentIntegration(source));
+  const codexDesign = createCodexDesignIntegration({
+    dataDirectory: petLordDataDirectory,
+    launcherPath: userDataPath(path.join("bin", process.platform === "win32" ? "petlord-mcp.cmd" : "petlord-mcp")),
+    codexConfigDirectory: process.env.CODEX_HOME ?? path.join(process.env.PETLORD_INTEGRATION_HOME ?? homedir(), ".codex"),
+  });
+  function assertSettingsSender(event) {
+    if (!settingsWindow || settingsWindow.isDestroyed() || event.sender !== settingsWindow.webContents
+      || event.senderFrame !== settingsWindow.webContents.mainFrame) throw new Error("Agent setup must be opened from PetLord settings.");
+    const target = surfaceUrl("settings");
+    const expected = target.type === "url" ? new URL(target.value) : pathToFileURL(target.value);
+    expected.searchParams.set("surface", "settings");
+    const actual = new URL(event.senderFrame.url);
+    actual.hash = "";
+    if (actual.href !== expected.href) throw new Error("Invalid PetLord settings origin.");
+  }
+  codexNotifications = createCodexNotificationIntegration({
+    codexConfigDirectory: process.env.CODEX_HOME ?? path.join(process.env.PETLORD_INTEGRATION_HOME ?? homedir(), ".codex"),
+    dataDirectory: integrationDirectory(), helperSourcePath: path.join(__dirname,"agent-notify.cjs"),
+    commandPrefix: process.platform === "win32" ? [process.execPath] : ["/usr/bin/env","ELECTRON_RUN_AS_NODE=1",process.execPath],
+    socketPath: agentSocketPath, tokenPath: agentTokenPath(), databasePath: agentDatabasePath(),
+    isAvailable: async()=> (await codexDesign.status()).available,
+    sendTest: async payload => storeAgentEvent(normalizeCodexEvent(payload)),
+  });
+  ipcMain.handle("runtime:codex-notification-status",event=>{assertSettingsSender(event);return codexNotifications.status();});
+  ipcMain.handle("runtime:install-codex-notifications",async event=>{
+    assertSettingsSender(event);const status=await codexNotifications.install();
+    if(status.configured)await saveSettings({pluginEnabled:{...runtimeSettings.pluginEnabled,"petlord.agent-activity":true},pluginGrants:{...runtimeSettings.pluginGrants,"petlord.agent-activity":["pet:read","pet:control","ui:panel","ui:context-menu","notifications","background:events","integration:claude:events","integration:claude:open-session","integration:codex:events","integration:codex:open-session"]}});
+    return status;
+  });
+  ipcMain.handle("runtime:test-codex-notifications",event=>{assertSettingsSender(event);return codexNotifications.test();});
+  ipcMain.handle("runtime:codex-design-status", (event) => { assertSettingsSender(event); return codexDesign.status(); });
+  ipcMain.handle("runtime:connect-codex-design", async (event) => {
+    assertSettingsSender(event);
+    await studioHost.start();
+    return codexDesign.connect();
+  });
   ipcMain.handle("runtime:plugin-storage-get", (_event, pluginId, key) => pluginStorageGet(pluginId, key));
   ipcMain.handle("runtime:plugin-storage-set", (_event, pluginId, key, value) => pluginStorageSet(pluginId, key, value));
   ipcMain.handle("runtime:plugin-storage-remove", (_event, pluginId, key) => pluginStorageRemove(pluginId, key));
+  studioHost = createStudioHost({
+    BrowserWindow,
+    ipcMain,
+    session,
+    dataDirectory: petLordDataDirectory,
+    studioDirectory: applicationResourcePath("studio"),
+    serviceModulePath: applicationResourcePath("service", "server.mjs"),
+    cliPath: applicationResourcePath("service", "design-cli.cjs"),
+    mcpPath: applicationResourcePath("service", "design-mcp.cjs"),
+    electronPath: process.execPath,
+    ffmpegPath: nativeHelperPath("ffmpeg"),
+    foregroundMaskerPath: process.platform === "darwin" ? nativeHelperPath("foreground-masker") : undefined,
+    installPackage: (contents, installOptions) => installOptions
+      ? savePackageContents(contents, { ...installOptions, skipStudioSync: true })
+      : savePackageContents(contents, { mode: "replace" }),
+    getInstalledPackageStatus: (key) => packageStore().getPackageStatus(key),
+    showRuntimeSettings: () => showSettings(),
+    getTheme: () => runtimeSettings.theme,
+    setTheme: async (theme) => (await saveSettings({theme})).theme,
+    showPet: () => mainWindow?.showInactive(),
+    isQuitting: () => quitting,
+  });
+  await studioHost.start().catch((error) => {
+    console.warn("PetLord Studio service will retry when opened", error);
+  });
   createPetWindow(hasPackage);
-  createSettingsWindow(!hasPackage || process.env.PETLORD_SHOW_SETTINGS === "1");
+  if (process.env.PETLORD_SHOW_SETTINGS === "1") showSettings();
+  else settingsWindow = settingsWindows.initialize();
   createTray();
+  installApplicationMenu({
+    Menu,
+    appName: app.getName(),
+    isMac: process.platform === "darwin",
+    showSettings: () => showSettings(),
+    showStudio,
+    showPet: () => mainWindow?.showInactive(),
+  });
   globalShortcut.register("CommandOrControl+Shift+P", () => {
     void saveSettings({ clickThrough: !runtimeSettings.clickThrough });
   });
 });
 
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
   quitting = true;
+  if (studioHost && !shutdownStarted) {
+    event.preventDefault();
+    shutdownStarted = true;
+    void studioHost.close()
+      .catch((error) => console.warn("Unable to close PetLord Studio service cleanly", error))
+      .finally(() => app.quit());
+  }
+  clearInterval(companionTimer);
+  desktopCompanion?.interrupt("quit");
   globalShortcut.unregisterAll();
   stopGlobalPointerTracking();
   agentSocketServer?.close();
+  agentSocketServer = undefined;
   agentDatabase?.close();
+  agentDatabase = undefined;
   if (process.platform !== "win32" && agentSocketPath) void unlink(agentSocketPath).catch(() => undefined);
 });
 app.on("window-all-closed", () => {
