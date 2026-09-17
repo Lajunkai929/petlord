@@ -80,4 +80,4 @@ The normal handoff no longer requires exporting and re-importing a file:
 
 Published versions are immutable, content-addressed `.petlord` files under `runtime-data/published-packages/`. The Desktop Client verifies the package again before installing it. Manual `.petlord` download and import remain available as an offline fallback.
 
-For a remote subscription server, enter its HTTPS origin in the Desktop Client. If you expose the generation API beyond loopback with `PETLORD_API_HOST`, place it behind your own authenticated reverse proxy; the built-in library is designed to be local-first and does not provide public-server authentication.
+For a remote subscription server, enter its HTTPS origin in the Desktop Client. The built-in generation API binds only to loopback. Hosting a remote subscription service requires a separately secured deployment.

@@ -80,4 +80,4 @@ npm run design -- example lottery --endpoint http://127.0.0.1:4312
 
 服务端会把每次发布保存成不可变、按内容寻址的 `.petlord` 版本，位置是 `runtime-data/published-packages/`。桌面客户端安装前会再次校验完整性；下载和手动导入 `.petlord` 仍作为离线备用流程保留。
 
-远程订阅可以在客户端填写 HTTPS 服务地址。如果通过 `PETLORD_API_HOST` 让生成 API 监听非回环地址，请自行放在带身份认证的反向代理后；内置发布库以本地使用为默认，不提供公网服务鉴权。
+远程订阅可以在客户端填写 HTTPS 服务地址。内置生成 API 仅监听本机回环地址；托管远程订阅服务需要单独部署并配置访问保护。
